@@ -1,14 +1,14 @@
-// /prisma/seed.ts
+// prisma/seed.ts
 import { PrismaClient } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
+
+const prisma = new PrismaClient();
 
 enum Role {
   OWNER = 'OWNER',
   ADMIN = 'ADMIN',
   USER = 'USER'
 }
-import * as bcrypt from 'bcrypt';
-
-const prisma = new PrismaClient();
 
 async function main() {
   console.log('🌱 Start seeding...');
@@ -65,12 +65,33 @@ async function main() {
   });
   console.log('✓ Users created.');
 
-  // --- 3. Products & Product Images ---
+  // --- 3. Category & SubCategory ---
+  const indoor = await prisma.category.create({
+    data: { name: 'Indoor' }
+  });
+  const kolektor = await prisma.category.create({
+    data: { name: 'Kolektor' }
+  });
+
+  const daunLebar = await prisma.subCategory.create({
+    data: { name: 'Daun Lebar', category: { connect: { id: indoor.id } } }
+  });
+  const daunUnik = await prisma.subCategory.create({
+    data: { name: 'Daun Unik', category: { connect: { id: kolektor.id } } }
+  });
+
+  // --- 4. Products & Product Images ---
   const product1 = await prisma.product.create({
     data: {
-      name: 'Monstera Deliciosa', price: 675000, category: 'Indoor', subCategory: 'Daun Lebar', variant: 'Klasik',
-      stock: 20, weight: 2.5, isBestProduct: true,
+      name: 'Monstera Deliciosa',
+      price: 675000,
+      variant: 'Klasik',
+      stock: 20,
+      weight: 2.5,
+      isBestProduct: true,
+      isActive: true,
       careDetails: { "Humidity": "60-75%", "Watering": "Siram setiap 7-10 hari", "Light": "Indirect sunlight" },
+      subCategory: { connect: { id: daunLebar.id } },
       images: {
         create: [
           { url: 'https://images.pexels.com/photos/6208086/pexels-photo-6208086.jpeg?auto=compress&cs=tinysrgb&w=800' },
@@ -82,9 +103,15 @@ async function main() {
 
   const product2 = await prisma.product.create({
     data: {
-      name: 'Anthurium Veitchii', price: 1250000, category: 'Kolektor', subCategory: 'Daun Unik', variant: 'King Anthurium',
-      stock: 5, weight: 1.8, isBestProduct: true,
+      name: 'Anthurium Veitchii',
+      price: 1250000,
+      variant: 'King Anthurium',
+      stock: 5,
+      weight: 1.8,
+      isBestProduct: true,
+      isActive: true,
       careDetails: { "Humidity": "70-80%", "Watering": "Jaga media tetap lembab", "Light": "Low to medium light" },
+      subCategory: { connect: { id: daunUnik.id } },
       images: {
         create: [
           { url: 'https://images.pexels.com/photos/807598/pexels-photo-807598.jpeg?auto=compress&cs=tinysrgb&w=800' },
@@ -94,7 +121,7 @@ async function main() {
   });
   console.log('✓ Products and Images created.');
 
-  // --- 4. Settings (Payment, Language, Currency, Shipping) ---
+  // --- 5. Settings (Payment, Language, Currency, Shipping) ---
   await prisma.paymentMethod.createMany({
     data: [
       { name: 'Midtrans', code: 'midtrans', isActive: true, config: { "serverKey": "YOUR_SERVER_KEY", "clientKey": "YOUR_CLIENT_KEY" } },
@@ -126,7 +153,7 @@ async function main() {
   });
   console.log('✓ Settings (Payment, Language, etc) created.');
 
-  // --- 5. Shipping Zones & Rates ---
+  // --- 6. Shipping Zones & Rates ---
   const zoneIndonesia = await prisma.shippingZone.create({
     data: {
       name: 'Indonesia',
@@ -142,7 +169,7 @@ async function main() {
   });
   console.log('✓ Shipping Zones and Rates created.');
   
-  // --- 6. Chat ---
+  // --- 7. Chat ---
   const conversation = await prisma.conversation.create({
     data: {
       user: { connect: { id: regularUser.id } },
