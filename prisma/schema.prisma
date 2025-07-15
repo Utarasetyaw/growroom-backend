@@ -13,6 +13,21 @@ enum Role {
   USER
 }
 
+enum PaymentStatus {
+  PENDING
+  PAID
+  CANCELLED
+  REFUND
+}
+
+enum OrderStatus {
+  PROCESSING   // Diproses
+  SHIPPING     // Dikirim
+  COMPLETED    // Selesai
+  REFUND
+  CANCELLED
+}
+
 model User {
   id                    Int            @id @default(autoincrement())
   email                 String         @unique
@@ -21,15 +36,16 @@ model User {
   role                  Role           @default(USER)
   permissions           String[]
   createdAt             DateTime       @default(now())
-  updatedAt             DateTime       @updatedAt
+  updatedAt             DateTime       @default(now())
   conversationsStarted  Conversation[] @relation("UserConversations")
   assignedConversations Conversation[] @relation("AdminAssignments")
   sentMessages          ChatMessage[]
+  orders                Order[]
 }
 
 model Category {
-  id           Int           @id @default(autoincrement())
-  name         String        @unique
+  id            Int           @id @default(autoincrement())
+  name          String        @unique
   subCategories SubCategory[]
 }
 
@@ -40,7 +56,7 @@ model SubCategory {
   categoryId Int
   products   Product[]
 
-  @@unique([name, categoryId]) // subcategory name unik per category
+  @@unique([name, categoryId])
 }
 
 model Product {
@@ -58,8 +74,8 @@ model Product {
   images        ProductImage[]
   subCategory   SubCategory   @relation(fields: [subCategoryId], references: [id])
   subCategoryId Int
+  orderItems    OrderItem[]
 }
-
 
 model ProductImage {
   id        Int     @id @default(autoincrement())
@@ -86,6 +102,35 @@ model PaymentMethod {
   config    Json     @default("{}")
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now())
+  orders    Order[]
+}
+
+model Order {
+  id              Int            @id @default(autoincrement())
+  user            User           @relation(fields: [userId], references: [id])
+  userId          Int
+  address         String
+  shippingCost    Float
+  subtotal        Float
+  total           Float
+  paymentStatus   PaymentStatus  @default(PENDING)
+  orderStatus     OrderStatus    @default(PROCESSING)
+  paymentMethod   PaymentMethod? @relation(fields: [paymentMethodId], references: [id])
+  paymentMethodId Int?
+  orderItems      OrderItem[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @default(now())
+}
+
+model OrderItem {
+  id        Int      @id @default(autoincrement())
+  order     Order    @relation(fields: [orderId], references: [id])
+  orderId   Int
+  product   Product  @relation(fields: [productId], references: [id])
+  productId Int
+  price     Float    // harga produk saat order
+  qty       Int
+  subtotal  Float
 }
 
 model Language {
