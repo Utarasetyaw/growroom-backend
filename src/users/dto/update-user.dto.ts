@@ -1,5 +1,5 @@
 // src/users/dto/update-user.dto.ts
-import { IsOptional, IsString, IsArray, IsEnum } from 'class-validator';
+import { IsOptional, IsString, IsArray, IsEnum, IsObject } from 'class-validator';
 import { Role } from '@prisma/client';
 
 export class UpdateUserDto {
@@ -19,4 +19,33 @@ export class UpdateUserDto {
   @IsArray()
   @IsString({ each: true })
   permissions?: string[];
+
+  // Tambahan untuk field profile
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @IsOptional()
+  @IsString()
+  city?: string;
+
+  @IsOptional()
+  @IsString()
+  province?: string;
+
+  @IsOptional()
+  @IsString()
+  country?: string;
+
+  @IsOptional()
+  @IsString()
+  postalCode?: string;
+
+  @IsOptional()
+  @IsObject()
+  socialMedia?: any; // atau bisa bikin DTO sendiri untuk sosmed jika mau lebih strict
 }

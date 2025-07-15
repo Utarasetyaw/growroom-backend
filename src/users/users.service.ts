@@ -1,19 +1,16 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Role, User } from '@prisma/client';
+import * as bcrypt from 'bcrypt'; // Import di atas
 
 @Injectable()
 export class UsersService {
   constructor(private prisma: PrismaService) {}
 
-  // Cari user by email (untuk login/register)
   async findOneByEmail(email: string): Promise<User | null> {
-    return this.prisma.user.findUnique({
-      where: { email },
-    });
+    return this.prisma.user.findUnique({ where: { email } });
   }
 
-  // List user (opsional filter by role)
   async findAll(role?: Role): Promise<User[]> {
     return this.prisma.user.findMany({
       where: role ? { role } : {},
@@ -21,48 +18,35 @@ export class UsersService {
     });
   }
 
-  // Cari user by id (untuk detail admin/owner)
   async findOne(id: number): Promise<User> {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('User not found');
     return user;
   }
 
-  // OWNER: Tambah user/admin
   async createUser(data: any): Promise<User> {
-    // Hash password jika ada
     if (data.password) {
-      const bcrypt = require('bcrypt');
       data.password = await bcrypt.hash(data.password, 10);
     }
     return this.prisma.user.create({ data });
   }
 
-  // OWNER/ADMIN: Update user/admin (by id)
   async updateUser(id: number, data: any): Promise<User> {
     if (data.password) {
-      const bcrypt = require('bcrypt');
       data.password = await bcrypt.hash(data.password, 10);
     }
     return this.prisma.user.update({ where: { id }, data });
   }
 
-  // OWNER/ADMIN: Hapus user/admin
   async deleteUser(id: number) {
     return this.prisma.user.delete({ where: { id } });
   }
 
-  // OWNER: Edit permissions admin (khusus)
   async updatePermissions(id: number, permissions: string[]) {
-    return this.prisma.user.update({
-      where: { id },
-      data: { permissions },
-    });
+    return this.prisma.user.update({ where: { id }, data: { permissions } });
   }
 
   // ================== PROFILE USER (me) ==================
-
-  // GET /users/me
   async findMe(userId: number) {
     return this.prisma.user.findUnique({
       where: { id: userId },
@@ -81,9 +65,7 @@ export class UsersService {
         updatedAt: true,
         orders: {
           include: {
-            orderItems: {
-              include: { product: true }
-            }
+            orderItems: { include: { product: true } }
           },
           orderBy: { createdAt: 'desc' }
         },
@@ -91,10 +73,8 @@ export class UsersService {
     });
   }
 
-  // PATCH /users/me
   async updateMe(userId: number, data: any) {
     if (data.password) {
-      const bcrypt = require('bcrypt');
       data.password = await bcrypt.hash(data.password, 10);
     }
     return this.prisma.user.update({

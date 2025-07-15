@@ -1,5 +1,5 @@
 // src/auth/guards/roles.guard.ts
-import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
+import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY, AllowedRole } from '../decorators/roles.decorator';
 
@@ -8,26 +8,42 @@ export class RolesGuard implements CanActivate {
   constructor(private reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    // Mengambil roles yang dibutuhkan dari decorator @Roles('...')
     const requiredRoles = this.reflector.getAllAndOverride<AllowedRole[]>(ROLES_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
 
-    // Jika endpoint tidak butuh role spesifik, izinkan akses
     if (!requiredRoles) {
+      // Jika tidak ada @Roles di endpoint, akses dibuka
       return true;
     }
 
-    // Mengambil data user yang sudah divalidasi oleh JwtAuthGuard
-    const { user } = context.switchToHttp().getRequest();
-    
-    // Jika user adalah OWNER, selalu berikan akses
+    const req = context.switchToHttp().getRequest();
+    const user = req.user;
+
+    // OWNER boleh semua (hard rule, boleh diubah jika ada OWNER-only logic di controller)
     if (user.role === 'OWNER') {
-        return true;
+      return true;
     }
 
-    // Cek apakah user (ADMIN) memiliki setidaknya satu dari permission yang dibutuhkan
+    // ADMIN: hanya boleh akses jika endpoint mengizinkan ADMIN
+    if (user.role === 'ADMIN') {
+      // Jika endpoint hanya OWNER, admin tidak boleh!
+      if (!requiredRoles.includes('ADMIN')) {
+        throw new ForbiddenException('You do not have access to this resource');
+      }
+      return true;
+    }
+
+    // USER: hanya boleh akses jika endpoint mengizinkan USER
+    if (user.role === 'USER') {
+      if (!requiredRoles.includes('USER')) {
+        throw new ForbiddenException('You do not have access to this resource');
+      }
+      return true;
+    }
+
+    // Cek permission (hanya jika endpoint menulis custom permission string, misal: @Roles('product'))
     return requiredRoles.some((role) => user.permissions?.includes(role));
   }
 }
