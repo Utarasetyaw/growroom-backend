@@ -12,7 +12,7 @@ export class AuthService {
     private usersService: UsersService,
     private jwtService: JwtService,
     private prisma: PrismaService,
-  ) {}
+  ) { }
 
   async validateUser(email: string, pass: string): Promise<any> {
     const user = await this.usersService.findOneByEmail(email);
@@ -45,10 +45,10 @@ export class AuthService {
     if (data.role !== allowedRole)
       throw new ForbiddenException('You can only register as ' + allowedRole);
 
-    // Untuk ADMIN/OWNER, bisa tambahkan proteksi lebih (misal: kode khusus)
+    // Batasi satu OWNER saja (opsional, hapus blok ini jika ingin multi OWNER)
     if (allowedRole === Role.OWNER) {
-      // Cegah sembarang user register jadi OWNER, misal
-      throw new ForbiddenException('Owner registration is only allowed by superadmin');
+      const exist = await this.prisma.user.findFirst({ where: { role: Role.OWNER } });
+      if (exist) throw new ForbiddenException('Owner already exists');
     }
 
     const hashed = await bcrypt.hash(data.password, 10);

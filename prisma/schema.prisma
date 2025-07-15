@@ -35,6 +35,13 @@ model User {
   password              String
   role                  Role           @default(USER)
   permissions           String[]
+  phone                 String?        // <--- Tambahkan nomor HP
+  address               String?        // <--- Alamat jalan/lengkap
+  city                  String?        // <--- Kota
+  province              String?        // <--- Provinsi
+  country               String?        // <--- Negara
+  postalCode            String?        // <--- Kode pos
+  socialMedia           Json           @default("{}") // <--- ig, facebook, tiktok dst
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @default(now())
   conversationsStarted  Conversation[] @relation("UserConversations")

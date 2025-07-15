@@ -1,6 +1,5 @@
 // src/auth/dto/register.dto.ts
-import { IsEmail, IsNotEmpty, IsString, IsEnum } from 'class-validator';
-import { Role } from '@prisma/client';
+import { IsEmail, IsNotEmpty, IsString } from 'class-validator';
 
 export class RegisterDto {
   @IsEmail()
@@ -13,7 +12,4 @@ export class RegisterDto {
   @IsString()
   @IsNotEmpty()
   password: string;
-
-  @IsEnum(Role)
-  role: Role;
 }
