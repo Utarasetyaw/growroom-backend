@@ -7,9 +7,10 @@ import { AuthModule } from './auth/auth.module';
 import { TestimonialsModule } from './testimonials/testimonials.module';
 import { GeneralsettingModule } from './generalsetting/generalsetting.module';
 import { LanguagesModule } from './languages/languages.module';
+import { CurrenciesModule } from './currencies/currencies.module';
 
 @Module({
-  imports: [PrismaModule, UsersModule, AuthModule, TestimonialsModule, GeneralsettingModule, LanguagesModule],
+  imports: [PrismaModule, UsersModule, AuthModule, TestimonialsModule, GeneralsettingModule, LanguagesModule, CurrenciesModule],
   controllers: [AppController],
   providers: [AppService],
 })
