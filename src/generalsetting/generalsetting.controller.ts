@@ -48,17 +48,17 @@ export class GeneralsettingController {
     @UploadedFiles() files: { [fieldname: string]: Express.Multer.File[] },
     @Body() body: any
   ) {
-    // Ambil path file jika ada upload
+    // Handle uploaded files (logo, favicon, banner, etc)
     const fileMap: any = {};
     if (files.logoUrl) fileMap.logoUrl = `/uploads/generalsetting/${files.logoUrl[0].filename}`;
     if (files.faviconUrl) fileMap.faviconUrl = `/uploads/generalsetting/${files.faviconUrl[0].filename}`;
     if (files.bannerImageUrl) fileMap.bannerImageUrl = `/uploads/generalsetting/${files.bannerImageUrl[0].filename}`;
     if (files.bannerVideoUrl) fileMap.bannerVideoUrl = `/uploads/generalsetting/${files.bannerVideoUrl[0].filename}`;
 
-    // Merge body + file
+    // Gabung body + files
     const data = { ...body, ...fileMap };
 
-    // Parse JSON string untuk multilang fields jika dikirim string dari Postman
+    // JSON parse untuk multilang/complex fields jika dikirim string dari Postman
     ['shopName', 'shopDescription', 'socialMedia'].forEach(field => {
       if (typeof data[field] === 'string') {
         try { data[field] = JSON.parse(data[field]); }
@@ -66,6 +66,13 @@ export class GeneralsettingController {
       }
     });
 
+    // Optional: Validasi telegramBotToken/telegramChatId (string saja)
+    if ('telegramBotToken' in data && typeof data.telegramBotToken !== 'string')
+      throw new BadRequestException('telegramBotToken must be a string');
+    if ('telegramChatId' in data && typeof data.telegramChatId !== 'string')
+      throw new BadRequestException('telegramChatId must be a string');
+
+    // Call service update (akan update seluruh field yang dikirim)
     return this.service.update(data);
   }
 }

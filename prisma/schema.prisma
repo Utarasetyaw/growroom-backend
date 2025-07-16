@@ -257,6 +257,8 @@ model GeneralSetting {
   bannerVideoUrl  String?
   address         String?  @db.Text
   socialMedia     Json     @default("{}")
+  telegramBotToken  String? 
+  telegramChatId    String? 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @default(now())
 }
