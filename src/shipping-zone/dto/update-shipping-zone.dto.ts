@@ -1,11 +1,16 @@
-import { IsOptional, IsString, IsBoolean } from 'class-validator';
+import { IsString, IsNumber, IsOptional, Min, IsBoolean } from 'class-validator';
 
 export class UpdateShippingZoneDto {
-  @IsOptional()
   @IsString()
+  @IsOptional()
   name?: string;
 
+  @IsNumber()
+  @Min(0)
   @IsOptional()
+  price?: number;
+
   @IsBoolean()
+  @IsOptional()
   isActive?: boolean;
 }

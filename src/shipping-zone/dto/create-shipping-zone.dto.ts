@@ -1,11 +1,15 @@
-import { IsNotEmpty, IsString, IsBoolean, IsOptional } from 'class-validator';
+import { IsString, IsNotEmpty, IsNumber, Min, IsBoolean, IsOptional } from 'class-validator';
 
 export class CreateShippingZoneDto {
-  @IsNotEmpty()
   @IsString()
+  @IsNotEmpty()
   name: string;
 
-  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  price: number;
+
   @IsBoolean()
-  isActive?: boolean = true;
+  @IsOptional()
+  isActive?: boolean;
 }

@@ -174,7 +174,7 @@ model ShippingProvider {
 model ShippingZone {
   id        Int      @id @default(autoincrement())
   name      String   @unique
-  price     Float    
+  price     Float    @default(0)
   isActive  Boolean  @default(true)
   rates     ShippingRate[]
   createdAt DateTime @default(now())
