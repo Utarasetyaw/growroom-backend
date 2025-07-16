@@ -21,9 +21,9 @@ enum PaymentStatus {
 }
 
 enum OrderStatus {
-  PROCESSING   // Diproses
-  SHIPPING     // Dikirim
-  COMPLETED    // Selesai
+  PROCESSING
+  SHIPPING
+  COMPLETED
   REFUND
   CANCELLED
 }
@@ -35,13 +35,13 @@ model User {
   password              String
   role                  Role           @default(USER)
   permissions           String[]
-  phone                 String?        // <--- Tambahkan nomor HP
-  address               String?        // <--- Alamat jalan/lengkap
-  city                  String?        // <--- Kota
-  province              String?        // <--- Provinsi
-  country               String?        // <--- Negara
-  postalCode            String?        // <--- Kode pos
-  socialMedia           Json           @default("{}") // <--- ig, facebook, tiktok dst
+  phone                 String?
+  address               String?
+  city                  String?
+  province              String?
+  country               String?
+  postalCode            String?
+  socialMedia           Json           @default("{}")
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @default(now())
   conversationsStarted  Conversation[] @relation("UserConversations")
@@ -50,38 +50,71 @@ model User {
   orders                Order[]
 }
 
+model Language {
+  id        Int      @id @default(autoincrement())
+  name      String
+  code      String   @unique
+  isActive  Boolean  @default(true)
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+}
+
+model Currency {
+  id        Int      @id @default(autoincrement())
+  name      String
+  code      String   @unique
+  symbol    String
+  isActive  Boolean  @default(true)
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+  productPrices      ProductPrice[]
+  shippingZonePrices ShippingZonePrice[]
+  shippingRatePrices ShippingRatePrice[]
+}
+
 model Category {
   id            Int           @id @default(autoincrement())
-  name          String        @unique
+  name          Json          // { "id": "...", "en": "...", ... }
   subCategories SubCategory[]
 }
 
 model SubCategory {
   id         Int       @id @default(autoincrement())
-  name       String
+  name       Json      // Multilang
   category   Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   categoryId Int
   products   Product[]
-
-  @@unique([name, categoryId])
+  @@unique([categoryId, name])
 }
 
 model Product {
-  id            Int           @id @default(autoincrement())
-  name          String
-  price         Float
-  variant       String
-  stock         Int           @default(0)
+  id            Int            @id @default(autoincrement())
+  name          Json           // Multilang
+  variant       Json           // Multilang
+  stock         Int            @default(0)
   weight        Float?
-  careDetails   Json          @default("{}")
-  isBestProduct Boolean       @default(false)
-  isActive      Boolean       @default(true)
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @default(now())
+  careDetails   Json           @default("{}")
+  isBestProduct Boolean        @default(false)
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @default(now())
   images        ProductImage[]
-  subCategory   SubCategory   @relation(fields: [subCategoryId], references: [id])
+  subCategory   SubCategory    @relation(fields: [subCategoryId], references: [id])
   subCategoryId Int
   orderItems    OrderItem[]
+  prices        ProductPrice[] // Multicurrency
+}
+
+model ProductPrice {
+  id         Int      @id @default(autoincrement())
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId  Int
+  currency   Currency @relation(fields: [currencyId], references: [id])
+  currencyId Int
+  price      Float
+  @@unique([productId, currencyId])
 }
 
 model ProductImage {
@@ -94,11 +127,11 @@ model ProductImage {
 model Testimonial {
   id        Int      @id @default(autoincrement())
   author    String
-  quote     String
+  quote     Json     // Multilang
   rating    Int
-  imageUrl  String? 
+  imageUrl  String?
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @default(now())
 }
 
 model PaymentMethod {
@@ -135,30 +168,9 @@ model OrderItem {
   orderId   Int
   product   Product  @relation(fields: [productId], references: [id])
   productId Int
-  price     Float    // harga produk saat order
+  price     Float
   qty       Int
   subtotal  Float
-}
-
-model Language {
-  id        Int      @id @default(autoincrement())
-  name      String
-  code      String   @unique
-  isActive  Boolean  @default(true)
-  isDefault Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now())
-}
-
-model Currency {
-  id        Int      @id @default(autoincrement())
-  name      String
-  code      String   @unique
-  symbol    String
-  isActive  Boolean  @default(true)
-  isDefault Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now())
 }
 
 model ShippingProvider {
@@ -172,24 +184,44 @@ model ShippingProvider {
 }
 
 model ShippingZone {
-  id        Int      @id @default(autoincrement())
-  name      String   @unique
-  price     Float    @default(0)
-  isActive  Boolean  @default(true)
+  id        Int                  @id @default(autoincrement())
+  name      String               @unique
+  isActive  Boolean              @default(true)
+  prices    ShippingZonePrice[]  // multicurrency
   rates     ShippingRate[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now())
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @default(now())
+}
+
+model ShippingZonePrice {
+  id             Int          @id @default(autoincrement())
+  shippingZone   ShippingZone @relation(fields: [shippingZoneId], references: [id], onDelete: Cascade)
+  shippingZoneId Int
+  currency       Currency     @relation(fields: [currencyId], references: [id])
+  currencyId     Int
+  price          Float
+  @@unique([shippingZoneId, currencyId])
 }
 
 model ShippingRate {
-  id        Int      @id @default(autoincrement())
+  id        Int                 @id @default(autoincrement())
   city      String
-  price     Float
-  isActive  Boolean  @default(true)
-  zone      ShippingZone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  isActive  Boolean             @default(true)
+  zone      ShippingZone        @relation(fields: [zoneId], references: [id], onDelete: Cascade)
   zoneId    Int
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now())
+  prices    ShippingRatePrice[] // multicurrency
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @default(now())
+}
+
+model ShippingRatePrice {
+  id             Int          @id @default(autoincrement())
+  shippingRate   ShippingRate @relation(fields: [shippingRateId], references: [id], onDelete: Cascade)
+  shippingRateId Int
+  currency       Currency     @relation(fields: [currencyId], references: [id])
+  currencyId     Int
+  price          Float
+  @@unique([shippingRateId, currencyId])
 }
 
 model Conversation {
@@ -217,11 +249,12 @@ model ChatMessage {
 
 model GeneralSetting {
   id              Int      @id @default(1)
+  shopName        Json?   // Multilang: { "id": "...", "en": "...", ... }
+  shopDescription Json?   // Multilang
   logoUrl         String?
   faviconUrl      String?
   bannerImageUrl  String?
   bannerVideoUrl  String?
-  shopDescription String?  @db.Text
   address         String?  @db.Text
   socialMedia     Json     @default("{}")
   createdAt       DateTime @default(now())
