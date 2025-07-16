@@ -32,7 +32,8 @@ export class ChatMessagesController {
   @Post()
   @Roles(Role.OWNER, Role.ADMIN, Role.USER)
   async create(@Body() dto: CreateChatMessageDto) {
-    return this.service.create(dto);
+    // Panggil createMessage supaya notifikasi Telegram tetap berjalan
+    return this.service.createMessage(dto, dto.senderId);
   }
 
   // Edit pesan (jarang dipakai, mostly debugging/admin only)
