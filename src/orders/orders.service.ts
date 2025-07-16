@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { PaymentService } from '../payment/payment.service';
+import { sendTelegramMessage } from '../utils/telegram.util';
 
 @Injectable()
 export class OrdersService {
@@ -16,7 +17,9 @@ export class OrdersService {
   // Create Order
   async create(userId: number, dto: CreateOrderDto) {
     // Validate payment method
-    const paymentMethod = await this.prisma.paymentMethod.findUnique({ where: { id: dto.paymentMethodId } });
+    const paymentMethod = await this.prisma.paymentMethod.findUnique({
+      where: { id: dto.paymentMethodId }
+    });
     if (!paymentMethod || !paymentMethod.isActive)
       throw new BadRequestException('Invalid or disabled payment method');
 
@@ -53,6 +56,27 @@ export class OrdersService {
       include: { orderItems: true, paymentMethod: true }
     });
 
+    // --- Kirim Notifikasi Telegram ke Owner ---
+    const setting = await this.prisma.generalSetting.findUnique({ where: { id: 1 } });
+    if (setting?.telegramBotToken && setting?.telegramChatId) {
+      const totalIDR = order.total?.toLocaleString('id-ID', { style: 'currency', currency: 'IDR' }) || order.total;
+      const itemsText = order.orderItems.map(
+        (item, idx) =>
+          `${idx + 1}. ${item.productId} x${item.qty} @${item.price.toLocaleString('id-ID')}`
+      ).join('\n');
+      const text =
+        `🛒 *Order Baru #${order.id}*\n` +
+        `👤 User ID: ${order.userId}\n` +
+        `🏠 Alamat: ${order.address}\n` +
+        `📦 Barang:\n${itemsText}\n` +
+        `💰 Subtotal: ${order.subtotal?.toLocaleString('id-ID')}\n` +
+        `🚚 Ongkir: ${order.shippingCost?.toLocaleString('id-ID')}\n` +
+        `💸 Total: *${totalIDR}*\n` +
+        `🔗 Metode: ${order.paymentMethod?.name || '-'}\n` +
+        `[Glowroom Admin Panel]`;
+      sendTelegramMessage(setting.telegramBotToken, setting.telegramChatId, text);
+    }
+
     // === PAYMENT RESPONSE HANDLING ===
 
     // A. BANK TRANSFER (manual, manual konfirmasi)
@@ -76,7 +100,7 @@ export class OrdersService {
       return {
         ...order,
         paymentType: 'MIDTRANS',
-        snapToken: snap.snapToken,        // CamelCase!
+        snapToken: snap.snapToken,
         redirectUrl: snap.redirectUrl
       };
     }

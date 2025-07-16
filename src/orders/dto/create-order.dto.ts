@@ -1,5 +1,5 @@
 import {
-  IsNotEmpty, IsString, IsNumber, IsOptional, IsArray, IsInt, Min, ValidateNested
+  IsNotEmpty, IsString, IsNumber, IsArray, IsInt, Min, ValidateNested
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -30,7 +30,7 @@ export class CreateOrderDto {
   total: number;
 
   @IsInt()
-  paymentMethodId: number; // Payment method (ID from PaymentMethod)
+  paymentMethodId: number;
 
   @IsArray()
   @ValidateNested({ each: true })

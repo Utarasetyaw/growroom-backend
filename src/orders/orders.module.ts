@@ -5,7 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PaymentModule } from '../payment/payment.module';
 
 @Module({
-  imports: [PaymentModule], // Agar bisa inject PaymentService
+  imports: [PaymentModule],
   controllers: [OrdersController],
   providers: [OrdersService, PrismaService],
   exports: [OrdersService],

@@ -15,28 +15,24 @@ import { RequestWithUser } from '../common/interfaces/request-with-user.interfac
 export class OrdersController {
   constructor(private readonly service: OrdersService) {}
 
-  // User: create order
   @Post()
   @Roles(Role.USER)
   create(@Req() req: RequestWithUser, @Body() dto: CreateOrderDto) {
     return this.service.create(req.user.userId, dto);
   }
 
-  // Owner/admin: list all orders
   @Get()
   @Roles(Role.OWNER, Role.ADMIN)
   findAll() {
     return this.service.findAll();
   }
 
-  // User: get own orders
   @Get('my')
   @Roles(Role.USER)
   getMyOrders(@Req() req: RequestWithUser) {
     return this.service.findUserOrders(req.user.userId);
   }
 
-  // Owner/admin: detail order, user: get own order
   @Get(':id')
   @Roles(Role.OWNER, Role.ADMIN, Role.USER)
   findOne(@Req() req: RequestWithUser, @Param('id', ParseIntPipe) id: number) {
@@ -46,7 +42,6 @@ export class OrdersController {
     return this.service.findOne(id);
   }
 
-  // Owner/admin: update status
   @Patch(':id')
   @Roles(Role.OWNER, Role.ADMIN)
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateOrderDto) {
