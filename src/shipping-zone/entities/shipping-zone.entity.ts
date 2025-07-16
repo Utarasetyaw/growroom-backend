@@ -1,11 +1,2 @@
-// src/shipping-zone/entities/shipping-zone.entity.ts
-import { ShippingZonePrice } from '@prisma/client';
-
-export class ShippingZone {
-  id: number;
-  name: string;
-  isActive: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-  prices?: ShippingZonePrice[];
-}
+// Biasanya untuk swagger/OpenAPI, jika pakai NestJS class-validator
+export class ShippingZone {}

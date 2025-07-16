@@ -1,3 +1,4 @@
+// src/generalsetting/generalsetting.controller.ts
 import {
   Controller, Get, Patch, Body, UseGuards,
   UseInterceptors, UploadedFiles, BadRequestException,
@@ -40,9 +41,7 @@ export class GeneralsettingController {
         cb(null, `${randomName}${extname(file.originalname)}`);
       }
     }),
-    fileFilter: (req, file, cb) => {
-      cb(null, true);
-    },
+    fileFilter: (req, file, cb) => cb(null, true),
     limits: { fileSize: 1024 * 1024 * 2 }
   }))
   async patchGeneral(
@@ -59,14 +58,14 @@ export class GeneralsettingController {
     // Merge body + file
     const data = { ...body, ...fileMap };
 
-    // Parse JSON string jika perlu
-    if (typeof data.socialMedia === 'string') {
-      try {
-        data.socialMedia = JSON.parse(data.socialMedia);
-      } catch {
-        throw new BadRequestException('Invalid socialMedia JSON');
+    // Parse JSON string untuk multilang fields jika dikirim string dari Postman
+    ['shopName', 'shopDescription', 'socialMedia'].forEach(field => {
+      if (typeof data[field] === 'string') {
+        try { data[field] = JSON.parse(data[field]); }
+        catch { throw new BadRequestException(`Invalid JSON at ${field}`); }
       }
-    }
+    });
+
     return this.service.update(data);
   }
 }

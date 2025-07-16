@@ -1,4 +1,3 @@
-// update-testimonial.dto.ts
 import { IsString, IsOptional, IsInt, Min, Max } from 'class-validator';
 
 export class UpdateTestimonialDto {
@@ -6,9 +5,8 @@ export class UpdateTestimonialDto {
   @IsOptional()
   author?: string;
 
-  @IsString()
   @IsOptional()
-  quote?: string;
+  quote?: any; // JSON multilang
 
   @IsInt()
   @Min(1)
@@ -20,3 +18,4 @@ export class UpdateTestimonialDto {
   @IsOptional()
   imageUrl?: string;
 }
+export class Testimonial {}

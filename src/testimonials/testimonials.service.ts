@@ -7,17 +7,11 @@ import { PrismaService } from '../prisma/prisma.service';
 export class TestimonialsService {
   constructor(private prisma: PrismaService) {}
 
-  /**
-   * Membuat testimoni baru.
-   * @param createTestimonialDto Data dari body request
-   * @param imageUrl Path ke gambar yang di-upload
-   */
   async create(createTestimonialDto: CreateTestimonialDto, imageUrl: string | null) {
-    // Tidak perlu parseInt karena sudah pasti number (ValidationPipe: transform: true)
     return this.prisma.testimonial.create({
       data: {
         author: createTestimonialDto.author,
-        quote: createTestimonialDto.quote,
+        quote: createTestimonialDto.quote, // Bisa object multilang!
         rating: createTestimonialDto.rating,
         imageUrl: imageUrl,
       },
@@ -26,19 +20,13 @@ export class TestimonialsService {
 
   findAll() {
     return this.prisma.testimonial.findMany({
-      orderBy: {
-        createdAt: 'desc',
-      },
+      orderBy: { createdAt: 'desc' },
     });
   }
 
   async findOne(id: number) {
-    const testimonial = await this.prisma.testimonial.findUnique({
-      where: { id },
-    });
-    if (!testimonial) {
-      throw new NotFoundException(`Testimonial with ID #${id} not found`);
-    }
+    const testimonial = await this.prisma.testimonial.findUnique({ where: { id } });
+    if (!testimonial) throw new NotFoundException(`Testimonial with ID #${id} not found`);
     return testimonial;
   }
 

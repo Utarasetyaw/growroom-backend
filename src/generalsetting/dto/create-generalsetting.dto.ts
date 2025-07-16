@@ -6,7 +6,8 @@ export class CreateGeneralsettingDto {
   @IsOptional() @IsString() faviconUrl?: string;
   @IsOptional() @IsString() bannerImageUrl?: string;
   @IsOptional() @IsString() bannerVideoUrl?: string;
-  @IsOptional() @IsString() shopDescription?: string;
+  @IsOptional() shopName?: any; // Multilang: { id: 'Nama', en: 'Name', ... }
+  @IsOptional() shopDescription?: any; // Multilang: { id: 'Deskripsi', en: 'Desc', ... }
   @IsOptional() @IsString() address?: string;
   @IsOptional() socialMedia?: any;
 }

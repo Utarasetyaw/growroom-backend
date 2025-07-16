@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsInt, IsString, Min, Max } from 'class-validator';
+import { IsNotEmpty, IsInt, Min, Max, IsOptional, IsString } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateTestimonialDto {
@@ -6,9 +6,8 @@ export class CreateTestimonialDto {
   @IsNotEmpty()
   author: string;
 
-  @IsString()
   @IsNotEmpty()
-  quote: string;
+  quote: any; // Bisa string atau object JSON multilang
 
   @Type(() => Number)
   @IsInt()

@@ -1,15 +1,5 @@
-// src/shipping-zone/shipping-zone.controller.ts
 import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Patch,
-  Param,
-  Delete,
-  UseGuards,
-  ParseIntPipe,
-  ForbiddenException,
+  Controller, Get, Post, Patch, Delete, Param, Body, ParseIntPipe, UseGuards
 } from '@nestjs/common';
 import { ShippingZoneService } from './shipping-zone.service';
 import { CreateShippingZoneDto } from './dto/create-shipping-zone.dto';
@@ -26,28 +16,31 @@ export class ShippingZoneController {
 
   @Get()
   @Roles(Role.OWNER)
-  findAll() {
+  async findAll() {
     return this.service.findAll();
   }
 
   @Get(':id')
   @Roles(Role.OWNER)
-  findOne(@Param('id', ParseIntPipe) id: number) {
+  async findOne(@Param('id', ParseIntPipe) id: number) {
     return this.service.findOne(id);
   }
 
   @Post()
   @Roles(Role.OWNER)
-  create(@Body() dto: CreateShippingZoneDto) {
+  async create(@Body() dto: CreateShippingZoneDto) {
     return this.service.create(dto);
   }
 
   @Patch(':id')
   @Roles(Role.OWNER)
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateShippingZoneDto) {
+  async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateShippingZoneDto) {
     return this.service.update(id, dto);
   }
 
   @Delete(':id')
   @Roles(Role.OWNER)
-  remove(@Param('id', ParseIntPipe) id: n
+  async remove(@Param('id', ParseIntPipe) id: number) {
+    return this.service.remove(id);
+  }
+}

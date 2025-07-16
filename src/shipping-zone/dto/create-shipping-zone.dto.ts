@@ -1,20 +1,30 @@
-import { IsString, IsNotEmpty, IsArray, ValidateNested } from 'class-validator';
+import {
+  IsString, IsBoolean, IsOptional, IsArray, ValidateNested, IsNotEmpty, IsNumber, IsInt
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
-class ShippingZonePriceDto {
+class ZonePriceDto {
   @IsNotEmpty()
+  @IsInt()
   currencyId: number;
+
   @IsNotEmpty()
+  @IsNumber()
   price: number;
 }
 
 export class CreateShippingZoneDto {
-  @IsString()
   @IsNotEmpty()
+  @IsString()
   name: string;
 
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean = true;
+
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => ShippingZonePriceDto)
-  prices: ShippingZonePriceDto[];
+  @Type(() => ZonePriceDto)
+  prices?: ZonePriceDto[];
 }

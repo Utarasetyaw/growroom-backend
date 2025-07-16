@@ -6,7 +6,8 @@ export class UpdateGeneralsettingDto {
   @IsOptional() @IsString() faviconUrl?: string;
   @IsOptional() @IsString() bannerImageUrl?: string;
   @IsOptional() @IsString() bannerVideoUrl?: string;
-  @IsOptional() @IsString() shopDescription?: string;
+  @IsOptional() shopName?: any;
+  @IsOptional() shopDescription?: any;
   @IsOptional() @IsString() address?: string;
-  @IsOptional() socialMedia?: any; // type bebas, bisa object, bisa stringified json
+  @IsOptional() socialMedia?: any;
 }
