@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Body, Param, Patch, UseGuards, ParseIntPipe, Req
+  Controller, Get, Post, Patch, Param, Body, ParseIntPipe, UseGuards, Req
 } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -13,37 +13,43 @@ import { RequestWithUser } from '../common/interfaces/request-with-user.interfac
 @Controller('orders')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(private readonly service: OrdersService) {}
 
-  // User buat order
+  // User: create order
   @Post()
   @Roles(Role.USER)
-  async create(@Req() req: RequestWithUser, @Body() dto: CreateOrderDto) {
-    return this.ordersService.create(req.user.userId, dto);
+  create(@Req() req: RequestWithUser, @Body() dto: CreateOrderDto) {
+    return this.service.create(req.user.userId, dto);
   }
 
-  // List order: user (punya sendiri), admin/owner (semua)
+  // Owner/admin: list all orders
   @Get()
-  @Roles(Role.OWNER, Role.ADMIN, Role.USER)
-  async findAll(@Req() req: RequestWithUser) {
-    return this.ordersService.findAll(req.user.role, req.user.userId);
+  @Roles(Role.OWNER, Role.ADMIN)
+  findAll() {
+    return this.service.findAll();
   }
 
-  // Detail order
+  // User: get own orders
+  @Get('my')
+  @Roles(Role.USER)
+  getMyOrders(@Req() req: RequestWithUser) {
+    return this.service.findUserOrders(req.user.userId);
+  }
+
+  // Owner/admin: detail order, user: get own order
   @Get(':id')
   @Roles(Role.OWNER, Role.ADMIN, Role.USER)
-  async findOne(@Req() req: RequestWithUser, @Param('id', ParseIntPipe) id: number) {
-    return this.ordersService.findOne(id, req.user.role, req.user.userId);
+  findOne(@Req() req: RequestWithUser, @Param('id', ParseIntPipe) id: number) {
+    if (req.user.role === Role.USER) {
+      return this.service.findOne(id, req.user.userId);
+    }
+    return this.service.findOne(id);
   }
 
-  // Owner/admin-finance update status
-  @Patch(':id/status')
+  // Owner/admin: update status
+  @Patch(':id')
   @Roles(Role.OWNER, Role.ADMIN)
-  async updateStatus(
-    @Req() req: RequestWithUser,
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateOrderDto
-  ) {
-    return this.ordersService.updateStatus(id, dto, req.user.role, req.user);
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateOrderDto) {
+    return this.service.update(id, dto);
   }
 }

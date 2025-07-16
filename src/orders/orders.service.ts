@@ -1,61 +1,134 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+// src/orders/orders.service.ts
+
+import { Injectable, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
+import { PaymentService } from '../payment/payment.service';
 
 @Injectable()
 export class OrdersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private paymentService: PaymentService
+  ) {}
 
-  // User create order
+  // Create Order
   async create(userId: number, dto: CreateOrderDto) {
-    // subtotal & total validasi disini jika perlu
-    // OrderItems input: [{productId, qty, price}]
-    const { orderItems, ...orderData } = dto;
-    const created = await this.prisma.order.create({
+    // Validate payment method
+    const paymentMethod = await this.prisma.paymentMethod.findUnique({ where: { id: dto.paymentMethodId } });
+    if (!paymentMethod || !paymentMethod.isActive)
+      throw new BadRequestException('Invalid or disabled payment method');
+
+    // Parse config (always as object)
+    let config: any = paymentMethod.config;
+    if (!config || typeof config !== 'object') {
+      try {
+        config = JSON.parse(paymentMethod.config as string);
+      } catch {
+        config = {};
+      }
+    }
+
+    // Create order (status always pending)
+    const order = await this.prisma.order.create({
       data: {
-        ...orderData,
         userId,
+        address: dto.address,
+        shippingCost: dto.shippingCost,
+        subtotal: dto.subtotal,
+        total: dto.total,
+        paymentStatus: 'PENDING',
+        orderStatus: 'PROCESSING',
+        paymentMethodId: dto.paymentMethodId,
         orderItems: {
-          create: orderItems.map(item => ({
+          create: dto.orderItems.map(item => ({
             productId: item.productId,
-            qty: item.qty,
             price: item.price,
+            qty: item.qty,
             subtotal: item.price * item.qty,
           })),
-        },
+        }
       },
-      include: { orderItems: true }
+      include: { orderItems: true, paymentMethod: true }
     });
-    return created;
+
+    // === PAYMENT RESPONSE HANDLING ===
+
+    // A. BANK TRANSFER (manual, manual konfirmasi)
+    if (paymentMethod.code === 'bank_transfer') {
+      return {
+        ...order,
+        paymentType: 'BANK_TRANSFER',
+        instructions: {
+          bank: config.bank,
+          accountNumber: config.accountNumber,
+          accountHolder: config.accountHolder,
+          note: 'Transfer sesuai total ke rekening di atas lalu konfirmasi pembayaran.'
+        }
+      };
+    }
+
+    // B. MIDTRANS
+    if (paymentMethod.code === 'midtrans') {
+      // Call service helper to create snap token
+      const snap = await this.paymentService.createMidtransTransaction(order, paymentMethod);
+      return {
+        ...order,
+        paymentType: 'MIDTRANS',
+        snapToken: snap.snapToken,        // CamelCase!
+        redirectUrl: snap.redirectUrl
+      };
+    }
+
+    // C. PAYPAL
+    if (paymentMethod.code === 'paypal') {
+      // Call service helper to create approval url
+      const paypal = await this.paymentService.createPaypalTransaction(order, paymentMethod);
+      return {
+        ...order,
+        paymentType: 'PAYPAL',
+        approvalUrl: paypal.approvalUrl
+      };
+    }
+
+    // D. Fallback (generic payment)
+    return order;
   }
 
-  // User: lihat order sendiri, Owner/Admin: semua order
-  async findAll(role: string, userId?: number) {
-    const where = role === 'USER' ? { userId } : {};
+  // List all orders (owner/admin)
+  async findAll() {
     return this.prisma.order.findMany({
-      where,
-      include: { orderItems: { include: { product: true } }, user: true },
+      include: { user: true, orderItems: { include: { product: true } }, paymentMethod: true },
       orderBy: { createdAt: 'desc' }
     });
   }
 
-  async findOne(id: number, role: string, userId?: number) {
+  // List user order (for user)
+  async findUserOrders(userId: number) {
+    return this.prisma.order.findMany({
+      where: { userId },
+      include: { orderItems: { include: { product: true } }, paymentMethod: true },
+      orderBy: { createdAt: 'desc' }
+    });
+  }
+
+  // Detail one order (user: only own, admin/owner: any)
+  async findOne(id: number, userId?: number) {
     const order = await this.prisma.order.findUnique({
       where: { id },
-      include: { orderItems: { include: { product: true } }, user: true }
+      include: { user: true, orderItems: { include: { product: true } }, paymentMethod: true },
     });
     if (!order) throw new NotFoundException('Order not found');
-    if (role === 'USER' && order.userId !== userId)
-      throw new ForbiddenException('Akses ditolak');
+    if (userId && order.userId !== userId) throw new ForbiddenException('Forbidden');
     return order;
   }
 
-  // Owner/Admin update status (paymentStatus/orderStatus)
-  async updateStatus(id: number, dto: UpdateOrderDto, role: string, user: any) {
-    if (role !== 'OWNER' && !(role === 'ADMIN' && user.permissions?.includes('finance'))) {
-      throw new ForbiddenException('Only owner/admin-finance can update status');
-    }
-    return this.prisma.order.update({ where: { id }, data: dto });
+  // Update order status (only by owner/admin)
+  async update(id: number, dto: UpdateOrderDto) {
+    return this.prisma.order.update({
+      where: { id },
+      data: dto
+    });
   }
 }

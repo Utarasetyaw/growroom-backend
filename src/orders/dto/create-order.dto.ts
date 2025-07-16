@@ -1,21 +1,22 @@
-import { IsNotEmpty, IsNumber, IsString, IsArray, ValidateNested, IsInt } from 'class-validator';
+import {
+  IsNotEmpty, IsString, IsNumber, IsOptional, IsArray, IsInt, Min, ValidateNested
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
-class OrderItemInput {
+class CreateOrderItemDto {
   @IsInt()
   productId: number;
 
-  @IsInt()
-  qty: number;
-
   @IsNumber()
   price: number;
+
+  @IsInt()
+  @Min(1)
+  qty: number;
 }
 
 export class CreateOrderDto {
-  @IsNotEmpty() @IsInt()
-  userId: number; // (ambil dari JWT, jangan dari client, pada real endpoint)
-
+  @IsNotEmpty()
   @IsString()
   address: string;
 
@@ -28,11 +29,11 @@ export class CreateOrderDto {
   @IsNumber()
   total: number;
 
+  @IsInt()
+  paymentMethodId: number; // Payment method (ID from PaymentMethod)
+
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => OrderItemInput)
-  orderItems: OrderItemInput[];
-
-  @IsInt()
-  paymentMethodId: number;
+  @Type(() => CreateOrderItemDto)
+  orderItems: CreateOrderItemDto[];
 }
