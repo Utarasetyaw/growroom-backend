@@ -1,4 +1,11 @@
-import { PartialType } from '@nestjs/mapped-types';
-import { CreateSubcategoryDto } from './create-subcategory.dto';
+import { IsOptional, IsObject, IsInt } from 'class-validator';
 
-export class UpdateSubcategoryDto extends PartialType(CreateSubcategoryDto) {}
+export class UpdateSubcategoryDto {
+  @IsOptional()
+  @IsObject()
+  name?: Record<string, string>;
+
+  @IsOptional()
+  @IsInt()
+  categoryId?: number;
+}
