@@ -12,9 +12,11 @@ import { PaymentmethodModule } from './paymentmethod/paymentmethod.module';
 import { ShippingProviderModule } from './shipping-provider/shipping-provider.module';
 import { ShippingZoneModule } from './shipping-zone/shipping-zone.module';
 import { ShippingRateModule } from './shipping-rate/shipping-rate.module';
+import { CategoriesModule } from './categories/categories.module';
+import { SubcategoriesModule } from './subcategories/subcategories.module';
 
 @Module({
-  imports: [PrismaModule, UsersModule, AuthModule, TestimonialsModule, GeneralsettingModule, LanguagesModule, CurrenciesModule, PaymentmethodModule, ShippingProviderModule, ShippingZoneModule, ShippingRateModule],
+  imports: [PrismaModule, UsersModule, AuthModule, TestimonialsModule, GeneralsettingModule, LanguagesModule, CurrenciesModule, PaymentmethodModule, ShippingProviderModule, ShippingZoneModule, ShippingRateModule, CategoriesModule, SubcategoriesModule],
   controllers: [AppController],
   providers: [AppService],
 })
