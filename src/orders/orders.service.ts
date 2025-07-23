@@ -6,6 +6,7 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { PaymentService } from '../payment/payment.service';
 import { sendTelegramMessage } from '../utils/telegram.util';
+import * as PDFDocument from 'pdfkit';
 
 @Injectable()
 export class OrdersService {
@@ -154,5 +155,87 @@ export class OrdersService {
       where: { id },
       data: dto
     });
+  }
+  async generateInvoicePdf(orderId: number, userId?: number): Promise<Buffer> {
+    // Ambil order
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        user: true,
+        orderItems: { include: { product: true } },
+        paymentMethod: true,
+      }
+    });
+    if (!order) throw new NotFoundException('Order not found');
+    if (userId && order.userId !== userId) throw new ForbiddenException('Forbidden');
+
+    // Invoice Generator
+    const doc = new PDFDocument({ margin: 40 });
+    const buffers: Buffer[] = [];
+    doc.on('data', d => buffers.push(d));
+    doc.on('end', () => {});
+
+    // HEADER
+    doc.fontSize(16).text('INVOICE', { align: 'center', underline: true });
+    doc.moveDown(0.5);
+    doc.fontSize(10).text(`Order ID: #${order.id}    |    Date: ${order.createdAt.toLocaleString('id-ID')}`);
+    doc.moveDown(0.5);
+    doc.text(`Customer: ${order.user?.name || order.userId} (${order.user?.email || '-'})`);
+    doc.text(`Alamat: ${order.address}`);
+    doc.moveDown(0.5);
+
+    // TABEL BARANG
+    doc.fontSize(12).text('Detail Barang', { underline: true });
+    doc.moveDown(0.5);
+    // Header Table
+    doc.fontSize(10)
+      .text('No', 40, doc.y, { continued: true })
+      .text('Nama Barang', 80, doc.y, { continued: true })
+      .text('Qty', 270, doc.y, { continued: true })
+      .text('Harga', 320, doc.y, { continued: true })
+      .text('Subtotal', 400, doc.y);
+    doc.moveDown(0.2);
+    doc.moveTo(40, doc.y).lineTo(550, doc.y).stroke();
+
+    // Items
+    order.orderItems.forEach((item, idx) => {
+      let name = '-';
+      if (item.product?.name) {
+        if (typeof item.product.name === 'object') {
+          // Handle object case - try to get id property if it exists or first value
+          const nameObj = item.product.name as Record<string, any>;
+          name = nameObj.id || 
+                (Object.keys(nameObj).length > 0 ? String(nameObj[Object.keys(nameObj)[0]]) : '-');
+        } else {
+          // Handle string or other primitive case
+          name = String(item.product.name);
+        }
+      }
+      doc.fontSize(10)
+        .text(`${idx + 1}`, 40, doc.y, { continued: true })
+        .text(`${name}`, 80, doc.y, { continued: true })
+        .text(`${item.qty}`, 270, doc.y, { continued: true })
+        .text(`${item.price.toLocaleString('id-ID')}`, 320, doc.y, { continued: true })
+        .text(`${item.subtotal.toLocaleString('id-ID')}`, 400, doc.y);
+      doc.moveDown(0.2);
+    });
+
+    doc.moveDown(0.2);
+    doc.moveTo(40, doc.y).lineTo(550, doc.y).stroke();
+
+    // Total & Footer
+    doc.moveDown(0.5);
+    doc.fontSize(11).text(`Subtotal: Rp${order.subtotal.toLocaleString('id-ID')}`, { align: 'right' });
+    doc.text(`Ongkir: Rp${order.shippingCost.toLocaleString('id-ID')}`, { align: 'right' });
+    doc.font('Helvetica-Bold').text(`TOTAL: Rp${order.total.toLocaleString('id-ID')}`, { align: 'right' }).font('Helvetica');
+    doc.moveDown(0.7);
+
+    doc.text(`Metode Bayar: ${order.paymentMethod?.name || '-'}`, { align: 'right' });
+    doc.moveDown(0.7);
+    doc.fontSize(10).text('Terima kasih sudah belanja di GlowRoom!', { align: 'center' });
+
+    doc.end();
+    await new Promise(res => doc.on('end', res));
+    return Buffer.concat(buffers);
   }
 }

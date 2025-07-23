@@ -19,9 +19,10 @@ import { OrdersModule } from './orders/orders.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { ChatMessagesModule } from './chat-messages/chat-messages.module';
 import { ChatModule } from './chat/chat.module';
+import { FinanceModule } from './finance/finance.module';
 
 @Module({
-  imports: [PrismaModule, UsersModule, AuthModule, TestimonialsModule, GeneralsettingModule, LanguagesModule, CurrenciesModule, PaymentmethodModule, ShippingProviderModule, ShippingZoneModule, ShippingRateModule, CategoriesModule, SubcategoriesModule, ProductsModule, OrdersModule, ConversationsModule, ChatMessagesModule, ChatModule,],
+  imports: [PrismaModule, UsersModule, AuthModule, TestimonialsModule, GeneralsettingModule, LanguagesModule, CurrenciesModule, PaymentmethodModule, ShippingProviderModule, ShippingZoneModule, ShippingRateModule, CategoriesModule, SubcategoriesModule, ProductsModule, OrdersModule, ConversationsModule, ChatMessagesModule, ChatModule, FinanceModule,],
   controllers: [AppController],
   providers: [AppService],
 })
