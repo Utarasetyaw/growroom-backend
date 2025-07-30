@@ -15,6 +15,9 @@ lerna-debug.log*
 # OS
 .DS_Store
 
+# Ignore generated documentation
+docs/
+
 # Tests
 /coverage
 /.nyc_output

@@ -1,0 +1,148 @@
+# File: asyncapi.yaml (v3.0.0 - Final Fix)
+
+asyncapi: 3.0.0
+id: 'urn:com:glowroom:chat:api'
+defaultContentType: application/json
+
+info:
+  title: Chat API
+  version: '1.0.0'
+  description: |
+    Dokumentasi untuk Real-time Chat API menggunakan WebSocket (Socket.IO).
+    API ini memungkinkan user dan admin untuk berkomunikasi secara real-time.
+  contact:
+    name: API Support
+    email: support@example.com
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  production:
+    host: localhost:3000
+    pathname: /ws-chat
+    protocol: socket.io
+    description: Development/Production Server
+    security:
+      - $ref: '#/components/securitySchemes/bearerAuth'
+
+channels:
+  chatChannel:
+    address: '/'
+    description: Channel utama untuk semua komunikasi chat.
+    messages:
+      joinRoom:
+        $ref: '#/components/messages/joinRoom'
+      sendMessage:
+        $ref: '#/components/messages/sendMessage'
+      newMessage:
+        $ref: '#/components/messages/newMessage'
+      adminNotification:
+        $ref: '#/components/messages/adminNotification'
+      joined:
+        $ref: '#/components/messages/joined'
+
+operations:
+  # --- Client-to-Server Operations ---
+  onJoinRoom:
+    action: receive
+    channel:
+      $ref: '#/channels/chatChannel'
+    messages:
+      # FIX: Referensi ke pesan di dalam channel, bukan components
+      - $ref: '#/channels/chatChannel/messages/joinRoom'
+  onSendMessage:
+    action: receive
+    channel:
+      $ref: '#/channels/chatChannel'
+    messages:
+      - $ref: '#/channels/chatChannel/messages/sendMessage'
+
+  # --- Server-to-Client Operations ---
+  sendNewMessage:
+    action: send
+    channel:
+      $ref: '#/channels/chatChannel'
+    messages:
+      - $ref: '#/channels/chatChannel/messages/newMessage'
+  sendAdminNotification:
+    action: send
+    channel:
+      $ref: '#/channels/chatChannel'
+    messages:
+      - $ref: '#/channels/chatChannel/messages/adminNotification'
+  sendJoinedConfirmation:
+    action: send
+    channel:
+      $ref: '#/channels/chatChannel'
+    messages:
+      - $ref: '#/channels/chatChannel/messages/joined'
+
+components:
+  messages:
+    # FIX: Menghapus field 'messageId' yang tidak diperlukan
+    joinRoom:
+      name: joinRoom
+      title: Join Room
+      summary: Klien meminta untuk bergabung ke sebuah room percakapan.
+      payload:
+        $ref: '#/components/schemas/joinRoomPayload'
+    sendMessage:
+      name: sendMessage
+      title: Send Message
+      summary: Klien mengirimkan sebuah pesan baru ke dalam percakapan.
+      payload:
+        $ref: '#/components/schemas/sendMessagePayload'
+    newMessage:
+      name: newMessage
+      title: New Message
+      summary: Server memberitahu klien bahwa ada pesan baru di room.
+      payload:
+        $ref: '#/components/schemas/chatMessage'
+    adminNotification:
+      name: adminNotification
+      title: Admin Notification
+      summary: Server memberitahu admin/owner bahwa ada pesan baru dari user.
+      payload:
+        $ref: '#/components/schemas/adminNotificationPayload'
+    joined:
+      name: joined
+      title: Joined Confirmation
+      summary: Server mengonfirmasi bahwa klien berhasil join ke sebuah room.
+      payload:
+        $ref: '#/components/schemas/joinedPayload'
+  
+  schemas:
+    joinRoomPayload:
+      type: object
+      properties:
+        conversationId: { type: number, description: "ID percakapan.", example: 123 }
+    sendMessagePayload:
+      type: object
+      properties:
+        conversationId: { type: number, description: "ID percakapan.", example: 123 }
+        content: { type: string, description: "Isi pesan.", example: "Halo!" }
+    chatMessage:
+      type: object
+      properties:
+        id: { type: number }
+        content: { type: string }
+        sender: { type: object, properties: { name: { type: string } } }
+    adminNotificationPayload:
+      type: object
+      properties:
+        type: { type: string, enum: [NEW_CHAT] }
+        message: { $ref: '#/components/schemas/chatMessage' }
+    joinedPayload:
+      type: object
+      properties:
+        room: { type: string, example: 'room-123' }
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Sertakan JWT pada `handshake.auth.token` saat melakukan koneksi Socket.IO.
+        Contoh: `io({ auth: { token: 'Bearer eyJ...' } })`
