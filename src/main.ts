@@ -14,15 +14,22 @@ async function bootstrap() {
     transform: true,
     whitelist: true,
   }));
-
+  
   app.useStaticAssets(join(__dirname, '..', 'uploads'), {
     prefix: '/uploads/',
   });
 
+  // ✅ ADD CORS CONFIGURATION HERE
+  app.enableCors({
+    origin: 'http://localhost:5173', // Your frontend's origin
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    credentials: true,
+  });
+
   // --- Konfigurasi Swagger ---
   const config = new DocumentBuilder()
-    .setTitle('Growroom API') // Ganti dengan judul yang sesuai
-    .setDescription('Dokumentasi API Growroom') // Ganti dengan deskripsi yang sesuai
+    .setTitle('GlowRoom API') // Ganti dengan judul yang sesuai
+    .setDescription('Dokumentasi API untuk GlowRoom') // Ganti dengan deskripsi yang sesuai
     .setVersion('1.0')
     .addBearerAuth() // Tambahkan ini jika Anda menggunakan otentikasi JWT
     .build();
@@ -31,7 +38,6 @@ async function bootstrap() {
   // URL untuk dokumentasi menjadi /api
   SwaggerModule.setup('api', app, document);
   // -------------------------
-
 
   await app.listen(3000);
 }
