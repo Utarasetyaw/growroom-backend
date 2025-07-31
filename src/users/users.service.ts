@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Role, User } from '@prisma/client';
-import * as bcrypt from 'bcrypt'; // Import di atas
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class UsersService {
@@ -48,12 +48,15 @@ export class UsersService {
 
   // ================== PROFILE USER (me) ==================
   async findMe(userId: number) {
-    return this.prisma.user.findUnique({
+    const user = await this.prisma.user.findUnique({
       where: { id: userId },
+      // ✅ PERBAIKAN: Pastikan 'role' dan 'permissions' disertakan dalam select
       select: {
         id: true,
         email: true,
         name: true,
+        role: true,          // <-- WAJIB ADA
+        permissions: true,   // <-- WAJIB ADA
         phone: true,
         address: true,
         city: true,
@@ -63,14 +66,10 @@ export class UsersService {
         socialMedia: true,
         createdAt: true,
         updatedAt: true,
-        orders: {
-          include: {
-            orderItems: { include: { product: true } }
-          },
-          orderBy: { createdAt: 'desc' }
-        },
-      }
+      },
     });
+    if (!user) throw new NotFoundException('User profile not found');
+    return user;
   }
 
   async updateMe(userId: number, data: any) {
@@ -83,8 +82,8 @@ export class UsersService {
       select: {
         id: true, email: true, name: true, phone: true, address: true,
         city: true, province: true, country: true, postalCode: true,
-        socialMedia: true, updatedAt: true
-      }
+        socialMedia: true, updatedAt: true,
+      },
     });
   }
 }
