@@ -259,6 +259,7 @@ model GeneralSetting {
   socialMedia     Json     @default("{}")
   telegramBotToken  String? 
   telegramChatId    String? 
+  shippingMode      String   @default("manual") // "manual" or "auto"
   createdAt       DateTime @default(now())
   updatedAt       DateTime @default(now())
 }

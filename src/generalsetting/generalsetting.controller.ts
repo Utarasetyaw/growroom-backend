@@ -13,6 +13,7 @@ import { GeneralsettingService } from './generalsetting.service';
 import { extname } from 'path';
 import { UpdateGeneralsettingDto } from './dto/update-generalsetting.dto';
 import { GeneralSettingResponseDto } from './dto/general-setting-response.dto';
+import { UpdateShippingModeDto } from './dto/update-shipping-mode.dto'; // Impor DTO baru
 
 @ApiTags('General Settings')
 @ApiBearerAuth()
@@ -26,7 +27,7 @@ export class GeneralsettingController {
   @ApiOperation({ summary: 'Mendapatkan semua pengaturan umum (Owner Only)' })
   @ApiResponse({ status: 200, type: GeneralSettingResponseDto })
   find() {
-    return this.service.find();
+    return this.service.findOne(); // ✅ Revisi: Sesuaikan nama metode
   }
 
   @Patch()
@@ -38,7 +39,6 @@ export class GeneralsettingController {
     type: UpdateGeneralsettingDto,
   })
   @ApiResponse({ status: 200, description: 'Pengaturan berhasil diupdate.', type: GeneralSettingResponseDto })
-  @ApiResponse({ status: 400, description: 'Format JSON tidak valid atau input salah.' })
   @UseInterceptors(FileFieldsInterceptor([
     { name: 'logoUrl', maxCount: 1 },
     { name: 'faviconUrl', maxCount: 1 },
@@ -52,8 +52,6 @@ export class GeneralsettingController {
         cb(null, `${randomName}${extname(file.originalname)}`);
       }
     }),
-    fileFilter: (req, file, cb) => cb(null, true),
-    limits: { fileSize: 1024 * 1024 * 2 }
   }))
   async patchGeneral(
     @UploadedFiles() files: { [fieldname: string]: Express.Multer.File[] },
@@ -74,11 +72,15 @@ export class GeneralsettingController {
       }
     });
 
-    if ('telegramBotToken' in data && typeof data.telegramBotToken !== 'string')
-      throw new BadRequestException('telegramBotToken must be a string');
-    if ('telegramChatId' in data && typeof data.telegramChatId !== 'string')
-      throw new BadRequestException('telegramChatId must be a string');
-
     return this.service.update(data);
+  }
+
+  // ✅ TAMBAHKAN ENDPOINT BARU INI
+  @Patch('shipping-mode')
+  @Roles(Role.OWNER)
+  @ApiOperation({ summary: 'Update mode kalkulasi pengiriman (Owner Only)' })
+  @ApiBody({ type: UpdateShippingModeDto })
+  updateShippingMode(@Body() dto: UpdateShippingModeDto) {
+    return this.service.updateShippingMode(dto);
   }
 }
