@@ -63,7 +63,6 @@ export class DashboardService {
    * Mengambil total pendapatan yang dikelompokkan per jam.
    */
   private async getHourlyRevenue(start: Date, end: Date): Promise<{ hour: number; total: number }[]> {
-    // ✅ PERBAIKAN DI BAWAH INI
     const result = await this.prisma.$queryRaw<any[]>`
       SELECT
         EXTRACT(HOUR FROM "createdAt") as hour,
@@ -71,7 +70,7 @@ export class DashboardService {
       FROM "Order"
       WHERE "createdAt" >= ${start}
         AND "createdAt" <= ${end}
-        AND "paymentStatus" = ${PaymentStatus.PAID}::"PaymentStatus" -- Tambahkan ::"PaymentStatus" di sini
+        AND "paymentStatus" = ${PaymentStatus.PAID}::"PaymentStatus"
       GROUP BY EXTRACT(HOUR FROM "createdAt")
       ORDER BY hour;
     `;
@@ -110,6 +109,32 @@ export class DashboardService {
       orderBy: {
         updatedAt: 'desc'
       }
+    });
+  }
+
+  /**
+   * Mengatur ulang dan menetapkan produk mana yang menjadi produk unggulan.
+   * @param productIds Array dari ID produk yang dipilih.
+   */
+  async updateBestProducts(productIds: number[]) {
+    // Gunakan transaksi untuk memastikan kedua operasi berhasil atau gagal bersamaan
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Set semua produk menjadi BUKAN produk unggulan
+      await tx.product.updateMany({
+        data: { isBestProduct: false },
+      });
+
+      // 2. Set produk yang dipilih menjadi produk unggulan
+      if (productIds && productIds.length > 0) {
+        await tx.product.updateMany({
+          where: {
+            id: { in: productIds },
+          },
+          data: { isBestProduct: true },
+        });
+      }
+
+      return { message: 'Best products updated successfully.' };
     });
   }
 }
