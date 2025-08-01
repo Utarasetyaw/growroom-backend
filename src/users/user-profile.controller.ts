@@ -9,19 +9,19 @@ import { UserResponseDto } from './dto/user-response.dto';
 
 @ApiTags('User Profile (Me)')
 @ApiBearerAuth()
-@Controller('profile')
+@Controller('users') // ✅ Corrected controller prefix
 @UseGuards(JwtAuthGuard)
 export class UserProfileController {
   constructor(private readonly usersService: UsersService) {}
 
-  @Get()
+  @Get('me') // ✅ Corrected route path
   @ApiOperation({ summary: 'Mendapatkan data profil user yang sedang login' })
   @ApiResponse({ status: 200, type: MyProfileResponseDto })
   getMe(@Req() req: RequestWithUser) {
     return this.usersService.findMe(req.user.userId);
   }
 
-  @Patch()
+  @Patch('me') // ✅ Corrected route path
   @ApiOperation({ summary: 'Memperbarui data profil user yang sedang login' })
   @ApiBody({ type: UpdateMyProfileDto })
   @ApiResponse({ status: 200, type: UserResponseDto })

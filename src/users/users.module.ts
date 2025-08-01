@@ -4,15 +4,16 @@ import { OwnerUsersController } from './owner-users.controller';
 import { OwnerAdminsController } from './owner-admins.controller';
 import { AdminUsersController } from './admin-users.controller';
 import { UserProfileController } from './user-profile.controller';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Module({
   controllers: [
     OwnerUsersController,
     OwnerAdminsController,
     AdminUsersController,
-    UserProfileController
+    UserProfileController,
   ],
-  providers: [UsersService],
+  providers: [UsersService, PrismaService],
   exports: [UsersService],
 })
 export class UsersModule {}
