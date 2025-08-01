@@ -63,6 +63,7 @@ export class DashboardService {
    * Mengambil total pendapatan yang dikelompokkan per jam.
    */
   private async getHourlyRevenue(start: Date, end: Date): Promise<{ hour: number; total: number }[]> {
+    // ✅ PERBAIKAN DI BAWAH INI
     const result = await this.prisma.$queryRaw<any[]>`
       SELECT
         EXTRACT(HOUR FROM "createdAt") as hour,
@@ -70,7 +71,7 @@ export class DashboardService {
       FROM "Order"
       WHERE "createdAt" >= ${start}
         AND "createdAt" <= ${end}
-        AND "paymentStatus" = ${PaymentStatus.PAID}
+        AND "paymentStatus" = ${PaymentStatus.PAID}::"PaymentStatus" -- Tambahkan ::"PaymentStatus" di sini
       GROUP BY EXTRACT(HOUR FROM "createdAt")
       ORDER BY hour;
     `;
