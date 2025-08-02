@@ -8,7 +8,6 @@ import { UpdateProductDto } from './dto/update-product.dto';
 export class ProductsService {
   constructor(private prisma: PrismaService) {}
 
-  // Gabungan include untuk menghindari duplikasi
   private readonly productInclude = {
     images: true,
     prices: {
@@ -17,6 +16,8 @@ export class ProductsService {
       },
     },
     subCategory: true,
+    // REVISI: Tambahkan careDetails ke include agar selalu dikembalikan
+    careDetails: true, 
   };
 
   async findAll() {
@@ -42,78 +43,91 @@ export class ProductsService {
   async create(createProductDto: CreateProductDto, imageUrls: string[]) {
     const { prices, careDetails, ...productData } = createProductDto;
 
-    return this.prisma.product.create({
-      data: {
-        ...productData,
-        careDetails: careDetails ? JSON.stringify(careDetails) : undefined,
-        images: {
-          create: imageUrls.map(url => ({ url })),
-        },
-        prices: {
-          create: prices,
-        },
+    const dataToCreate: Prisma.ProductCreateInput = {
+      ...productData,
+      // REVISI: Langsung berikan objek/array JavaScript, jangan di-stringify.
+      // Prisma akan menanganinya secara otomatis untuk tipe data Json.
+      careDetails: careDetails ? JSON.parse(JSON.stringify(careDetails)) : undefined,
+      subCategory: {
+        connect: { id: productData.subCategoryId }
       },
+      images: {
+        create: imageUrls.map(url => ({ url })),
+      },
+    };
+
+    // REVISI: Tambahkan filter validasi untuk harga, sama seperti di metode update.
+    if (prices && prices.length > 0) {
+      const validPrices = prices.filter(p => p.currencyId != null && p.price != null);
+      if (validPrices.length > 0) {
+        dataToCreate.prices = {
+          create: validPrices,
+        };
+      }
+    }
+
+    return this.prisma.product.create({
+      data: dataToCreate,
       include: this.productInclude,
     });
   }
 
   async update(id: number, updateProductDto: UpdateProductDto, newImageUrls: string[]) {
-    // REVISI: Destructuring DTO untuk memisahkan data relasi
-    const { prices, imagesToDelete, ...productData } = updateProductDto;
+    const { prices, imagesToDelete, careDetails, ...productData } = updateProductDto;
 
-    // REVISI: Gunakan transaksi untuk memastikan semua operasi berhasil atau dibatalkan bersama-sama.
-    // Ini menjaga integritas data jika terjadi error di tengah jalan.
     return this.prisma.$transaction(async (tx) => {
-      // 1. Pastikan produk ada di dalam transaksi
       const product = await tx.product.findUnique({ where: { id } });
       if (!product) {
         throw new NotFoundException(`Product with ID ${id} not found.`);
       }
 
-      // 2. Update data produk utama jika ada
-      if (Object.keys(productData).length > 0) {
+      // Gabungkan semua data skalar yang akan diupdate
+      const scalarDataToUpdate: Prisma.ProductUpdateInput = {
+        ...productData,
+        // REVISI: Tangani update careDetails di sini, jangan di-stringify.
+        careDetails: careDetails ? JSON.parse(JSON.stringify(careDetails)) : undefined,
+      };
+
+      if (Object.keys(scalarDataToUpdate).length > 0) {
         await tx.product.update({
           where: { id },
-          data: productData as Prisma.ProductUpdateInput,
+          data: scalarDataToUpdate,
         });
       }
-
-      // 3. Hapus gambar lama jika ada ID yang diberikan di `imagesToDelete`
+      
+      // Hapus gambar lama
       if (imagesToDelete && imagesToDelete.length > 0) {
         await tx.productImage.deleteMany({
-          where: {
-            productId: id,
-            id: { in: imagesToDelete },
-          },
+          where: { productId: id, id: { in: imagesToDelete } },
         });
       }
 
-      // 4. Tambahkan gambar baru jika ada file yang di-upload
+      // Tambah gambar baru
       if (newImageUrls && newImageUrls.length > 0) {
         await tx.productImage.createMany({
-          data: newImageUrls.map(url => ({
-            url,
-            productId: id,
-          })),
+          data: newImageUrls.map(url => ({ url, productId: id })),
         });
       }
 
-      // 5. Update harga (Strategi: Hapus semua harga lama lalu buat yang baru)
-      if (prices && prices.length > 0) {
+      // Update harga
+      if (prices) { // REVISI: Bisa juga untuk mengosongkan harga dengan array kosong
         await tx.productPrice.deleteMany({ where: { productId: id } });
-        await tx.productPrice.createMany({
-          data: prices
-            .filter(price => price.currencyId !== undefined && price.price !== undefined)
-            .map(price => ({
-              ...price,
-              productId: id,
-              currencyId: price.currencyId!,
-              price: price.price!,
-            })),
-        });
+
+        if (prices.length > 0) {
+            const validPrices = prices.filter(p => p.currencyId != null && p.price != null);
+            if(validPrices.length > 0) {
+                await tx.productPrice.createMany({
+                    data: validPrices.map(price => ({
+                        productId: id,
+                        currencyId: price.currencyId!,
+                        price: price.price!,
+                    })),
+                });
+            }
+        }
       }
 
-      // 6. Ambil dan kembalikan data produk terbaru setelah semua perubahan
+      // Kembalikan data produk terbaru
       return tx.product.findUnique({
         where: { id },
         include: this.productInclude,
@@ -122,16 +136,10 @@ export class ProductsService {
   }
 
   async remove(id: number) {
-    // Cek dulu apakah produk ada sebelum mencoba menghapus
     const product = await this.prisma.product.findUnique({ where: { id } });
     if (!product) {
       throw new NotFoundException(`Product with ID ${id} not found.`);
     }
-
-    // `onDelete: Cascade` di Prisma schema akan otomatis menghapus
-    // ProductImage dan ProductPrice yang berelasi.
-    return this.prisma.product.delete({
-      where: { id },
-    });
+    return this.prisma.product.delete({ where: { id } });
   }
 }
