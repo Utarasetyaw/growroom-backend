@@ -19,76 +19,93 @@ import { TestimonialResponseDto } from './dto/testimonial-response.dto';
 
 @ApiTags('Testimonials')
 @Controller('testimonials')
+@UseGuards(JwtAuthGuard, RolesGuard) // Lindungi semua rute di controller ini
 export class TestimonialsController {
   constructor(private readonly testimonialsService: TestimonialsService) {}
 
   @Post()
-  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.OWNER)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Membuat testimoni baru (Owner Only)' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
-    description: 'Data testimoni. Field "image" adalah file, field lain adalah teks.',
-    // Kita gunakan DTO dari create, lalu tambahkan properti 'image' secara manual untuk dokumentasi
     schema: {
       type: 'object',
       properties: {
-        image: { type: 'string', format: 'binary', description: 'File gambar testimoni.' },
-        author: { type: 'string', example: 'Budi' },
-        quote: { type: 'string', example: '{"id":"Sangat puas!","en":"Very satisfied!"}' },
-        rating: { type: 'number', example: 5 },
+        image: { type: 'string', format: 'binary' },
+        author: { type: 'string' },
+        quote: { type: 'string', description: 'JSON string, e.g., \'{"en":"Good!","id":"Bagus!"}\'' },
+        rating: { type: 'number' },
       },
     },
   })
   @ApiResponse({ status: 201, type: TestimonialResponseDto })
-  @UseInterceptors(FileInterceptor('image', { /*... multer config ...*/ }))
+  @UseInterceptors(FileInterceptor('image', {
+    storage: diskStorage({
+      destination: './uploads/testimonials',
+      filename: (req, file, cb) => {
+        const randomName = Array(32).fill(null).map(() => Math.round(Math.random() * 16).toString(16)).join('');
+        cb(null, `${randomName}${extname(file.originalname)}`);
+      }
+    })
+  }))
   async create(
     @UploadedFile() file: Express.Multer.File,
     @Body() body: any,
   ) {
-    if (typeof body.quote === 'string') {
-      try { body.quote = JSON.parse(body.quote); } catch {}
-    }
-    const imageUrl = file ? `/uploads/testimonials/${file.filename}` : null;
-    const dto = plainToInstance(CreateTestimonialDto, body);
-    const errors = validateSync(dto);
-    if (errors.length) {
-      throw new BadRequestException(errors.flatMap(e => e.constraints ? Object.values(e.constraints) : []));
-    }
-    return this.testimonialsService.create(dto, imageUrl);
+    if (!file) throw new BadRequestException('Image file is required.');
+    
+    const imageUrl = `/uploads/testimonials/${file.filename}`;
+    return this.testimonialsService.create(body, imageUrl);
   }
 
   @Get()
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.OWNER)
+  @Roles(Role.OWNER, Role.ADMIN) // Admin juga bisa melihat
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Mendapatkan semua testimoni (Owner Only)' })
+  @ApiOperation({ summary: 'Mendapatkan semua testimoni' })
   @ApiResponse({ status: 200, type: [TestimonialResponseDto] })
   async findAll() {
     return this.testimonialsService.findAll();
   }
 
   @Patch(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.OWNER)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update testimoni (Owner Only)' })
   @ApiParam({ name: 'id', description: 'ID testimoni' })
+  @ApiConsumes('multipart/form-data') // ✅ Terima multipart/form-data
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        image: { type: 'string', format: 'binary', description: 'File gambar baru (opsional).' },
+        author: { type: 'string' },
+        quote: { type: 'string', description: 'JSON string, e.g., \'{"en":"Good!","id":"Bagus!"}\'' },
+        rating: { type: 'number' },
+      },
+    },
+  })
   @ApiResponse({ status: 200, type: TestimonialResponseDto })
   @ApiNotFoundResponse({ description: 'Testimoni tidak ditemukan.' })
+  @UseInterceptors(FileInterceptor('image', { // ✅ Gunakan interceptor untuk file
+    storage: diskStorage({
+      destination: './uploads/testimonials',
+      filename: (req, file, cb) => {
+        const randomName = Array(32).fill(null).map(() => Math.round(Math.random() * 16).toString(16)).join('');
+        cb(null, `${randomName}${extname(file.originalname)}`);
+      }
+    })
+  }))
   async update(
     @Param('id', ParseIntPipe) id: number,
-    @Body() updateTestimonialDto: UpdateTestimonialDto,
+    @Body() body: any,
+    @UploadedFile() file?: Express.Multer.File, // File bersifat opsional
   ) {
-    if (typeof updateTestimonialDto.quote === 'string') {
-      try { updateTestimonialDto.quote = JSON.parse(updateTestimonialDto.quote); } catch {}
-    }
-    return this.testimonialsService.update(id, updateTestimonialDto);
+    const imageUrl = file ? `/uploads/testimonials/${file.filename}` : undefined;
+    return this.testimonialsService.update(id, body, imageUrl);
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.OWNER)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Menghapus testimoni (Owner Only)' })
