@@ -1,70 +1,116 @@
+// src/products/dto/create-product.dto.ts
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNotEmpty, IsInt, IsOptional, IsBoolean, IsArray, IsObject, ValidateNested, IsNumber } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsArray, IsBoolean, IsInt, IsNotEmpty, IsNumber, IsObject, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { Type, Transform } from 'class-transformer';
 
+// REVISI: Helper function untuk parsing JSON yang datang sebagai string
+const parseJson = ({ value }) => {
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch (e) {
+      // Biarkan validator menangani error jika parsing gagal
+      return value;
+    }
+  }
+  return value; // Kembalikan nilai asli jika sudah objek/bukan string
+};
+
+// DTOs untuk struktur data yang kompleks (nested)
 class ProductPriceDto {
-  @ApiProperty({ description: 'ID dari mata uang.', example: 1 })
-  @IsInt() 
+  @ApiProperty()
+  @IsInt()
   currencyId: number;
 
-  @ApiProperty({ description: 'Harga produk dalam mata uang terkait.', example: 250000 })
-  @IsNumber() 
+  @ApiProperty()
+  @IsNumber()
   price: number;
 }
 
-class ProductImageDto {
-  @ApiProperty({ description: 'URL dari gambar produk.', example: '/uploads/products/image1.jpg' })
-  @IsNotEmpty() 
-  url: string;
+class CareDetailNameDto {
+    @ApiProperty() @IsString() en: string;
+    @ApiProperty() @IsString() id: string;
 }
 
+class CareDetailValueDto {
+    @ApiProperty() @IsString() en: string;
+    @ApiProperty() @IsString() id: string;
+}
+
+class CareDetailDto {
+    @ApiProperty({ type: CareDetailNameDto })
+    @IsObject()
+    @ValidateNested()
+    @Type(() => CareDetailNameDto)
+    name: CareDetailNameDto;
+
+    @ApiProperty({ type: CareDetailValueDto })
+    @IsObject()
+    @ValidateNested()
+    @Type(() => CareDetailValueDto)
+    value: CareDetailValueDto;
+}
+
+
 export class CreateProductDto {
-  @ApiProperty({ description: 'Nama produk dalam berbagai bahasa.', example: { id: "Kemeja Lengan Panjang", en: "Long Sleeve Shirt" } })
-  @IsObject() 
+  @ApiProperty({ type: 'string', example: '{"en": "Monstera", "id": "Monstera"}' })
+  @Transform(parseJson) // REVISI: Auto-parse JSON dari string
+  @IsObject()
   name: Record<string, string>;
 
-  @ApiProperty({ description: 'Varian produk (warna/ukuran).', example: { id: "Biru", en: "Blue" } })
-  @IsObject() 
+  @ApiProperty({ type: 'string', example: '{"en": "Deliciosa", "id": "Deliciosa"}' })
+  @Transform(parseJson) // REVISI: Auto-parse JSON dari string
+  @IsObject()
   variant: Record<string, string>;
+  
+  @ApiPropertyOptional({ type: 'string', description: "Deskripsi produk.", example: '{"en": "A beautiful plant", "id": "Tanaman yang indah"}' })
+  @Transform(parseJson) // REVISI: Auto-parse JSON dari string
+  @IsOptional()
+  @IsObject()
+  description?: Record<string, string>;
 
-  @ApiProperty({ description: 'ID sub-kategori produk.', example: 5 })
-  @IsInt() 
+  @ApiProperty()
+  @Type(() => Number) // REVISI: Ubah string dari form-data menjadi number
+  @IsInt()
   subCategoryId: number;
 
-  @ApiProperty({ description: 'Jumlah stok produk.', example: 100 })
-  @IsInt() 
+  @ApiProperty()
+  @Type(() => Number)
+  @IsInt()
   stock: number;
 
-  @ApiPropertyOptional({ description: 'Berat produk dalam gram (untuk ongkir).', example: 250 })
-  @IsOptional() 
-  @IsNumber() 
+  @ApiPropertyOptional()
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
   weight?: number;
 
-  @ApiPropertyOptional({ description: 'Detail perawatan dalam berbagai bahasa.', example: { id: "Cuci dengan air dingin", en: "Wash with cold water" } })
-  @IsOptional() 
-  @IsObject() 
-  careDetails?: Record<string, any>;
+  @ApiPropertyOptional({ type: 'string', example: '[{"name":{"en":"Pot Size","id":"Ukuran Pot"},"value":{"en":"15 cm","id":"15 cm"}}]' })
+  @Transform(parseJson) // REVISI: Auto-parse JSON dari string
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CareDetailDto)
+  careDetails?: CareDetailDto[];
 
-  @ApiPropertyOptional({ description: 'Tandai sebagai produk unggulan.', example: true })
-  @IsOptional() 
-  @IsBoolean() 
+  @ApiPropertyOptional({ type: 'string', example: 'true' })
+  @Transform(({ value }) => value === 'true' || value === true) // REVISI: Handle boolean dari string
+  @IsOptional()
+  @IsBoolean()
   isBestProduct?: boolean;
 
-  @ApiPropertyOptional({ description: 'Status aktif produk.', example: true })
-  @IsOptional() 
-  @IsBoolean() 
+  @ApiPropertyOptional({ type: 'string', example: 'true' })
+  @Transform(({ value }) => value === 'true' || value === true) // REVISI: Handle boolean dari string
+  @IsOptional()
+  @IsBoolean()
   isActive?: boolean;
 
-  @ApiPropertyOptional({ description: 'List gambar produk.', type: [ProductImageDto] })
-  @IsOptional() 
-  @IsArray() 
-  @ValidateNested({ each: true }) 
-  @Type(() => ProductImageDto)
-  images?: ProductImageDto[];
-
-  @ApiProperty({ description: 'List harga produk dalam berbagai mata uang.', type: [ProductPriceDto] })
-  @IsArray() 
-  @ValidateNested({ each: true }) 
+  @ApiProperty({ type: 'string', description: 'Array JSON dari harga', example: '[{"currencyId":1, "price":150000}]' })
+  @Transform(parseJson) // REVISI: Auto-parse JSON dari string
+  @IsArray()
+  @ValidateNested({ each: true })
   @Type(() => ProductPriceDto)
   prices: ProductPriceDto[];
+
+  // REVISI: Properti `images` dihapus dari DTO. Ini akan ditangani oleh `@UploadedFiles` di controller.
 }

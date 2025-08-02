@@ -9,6 +9,10 @@ export class ProductResponseDto {
   @ApiProperty() id: number;
   @ApiProperty() name: any;
   @ApiProperty() variant: any;
+  
+  @ApiProperty({ nullable: true, description: "Deskripsi produk dalam berbagai bahasa." })
+  description: any;
+
   @ApiProperty() stock: number;
   @ApiProperty({ nullable: true }) weight: number | null;
   @ApiProperty({ nullable: true }) careDetails: any | null;
