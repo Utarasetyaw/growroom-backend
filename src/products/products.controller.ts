@@ -10,7 +10,7 @@ import {
   UseGuards,
   UseInterceptors,
   UploadedFiles,
-  NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import {
@@ -31,10 +31,13 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '@prisma/client';
 
-// REVISI: Mengimpor DTO dari file terpisah
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductResponseDto } from './dto/product-response.dto';
+
+// Definisikan tipe data yang diharapkan service agar lebih aman
+interface ParsedPrice { currencyId: number; price: number; }
+interface ParsedCareDetail { name: Record<string, string>; value: Record<string, string>; }
 
 @ApiTags('Products')
 @ApiBearerAuth()
@@ -45,24 +48,14 @@ export class ProductsController {
 
   @Get()
   @Roles(Role.OWNER, Role.ADMIN)
-  @ApiOperation({ summary: 'Mendapatkan semua produk (Admin/Owner Only)' })
-  @ApiResponse({ status: 200, type: [ProductResponseDto] })
   findAll() {
     return this.productsService.findAll();
   }
 
   @Get(':id')
   @Roles(Role.OWNER, Role.ADMIN)
-  @ApiOperation({ summary: 'Mendapatkan detail satu produk (Admin/Owner Only)' })
-  @ApiParam({ name: 'id', description: 'ID Produk' })
-  @ApiResponse({ status: 200, type: ProductResponseDto })
-  @ApiNotFoundResponse({ description: 'Produk tidak ditemukan.' })
-  async findOne(@Param('id', ParseIntPipe) id: number) {
-    const product = await this.productsService.findOne(id);
-    if (!product) {
-      throw new NotFoundException(`Product with ID ${id} not found.`);
-    }
-    return product;
+  findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.productsService.findOne(id);
   }
 
   @Post()
@@ -80,19 +73,42 @@ export class ProductsController {
   }))
   create(
     @UploadedFiles() files: Array<Express.Multer.File>,
-    @Body() createProductDto: CreateProductDto,
+    @Body() rawDto: CreateProductDto,
   ) {
-    // REVISI: Ambil URL dari file yang di-upload dan teruskan ke service.
-    // DTO akan di-parsing secara otomatis oleh `class-validator` & `class-transformer`.
+    let parsedPrices: ParsedPrice[] | undefined = undefined;
+    if (rawDto.prices) {
+      try {
+        parsedPrices = JSON.parse(rawDto.prices);
+      } catch (e) {
+        throw new BadRequestException('Format "prices" tidak valid. Harus berupa JSON string dari sebuah array.');
+      }
+    }
+
+    let parsedCareDetails: ParsedCareDetail[] | undefined = undefined;
+    if (rawDto.careDetails) {
+      try {
+        parsedCareDetails = JSON.parse(rawDto.careDetails);
+      } catch (e) {
+        throw new BadRequestException('Format "careDetails" tidak valid. Harus berupa JSON string dari sebuah array.');
+      }
+    }
+
+    const processedDto = {
+      ...rawDto,
+      prices: parsedPrices,
+      careDetails: parsedCareDetails,
+    };
+    
     const imageUrls = files ? files.map(file => `/uploads/products/${file.filename}`) : [];
-    return this.productsService.create(createProductDto, imageUrls);
+    
+    return this.productsService.create(processedDto as any, imageUrls);
   }
 
   @Patch(':id')
   @Roles(Role.OWNER, Role.ADMIN)
   @ApiOperation({ summary: 'Update produk (Admin/Owner Only)' })
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FilesInterceptor('newImages', 10, { // REVISI: Nama field yang jelas untuk gambar baru
+  @UseInterceptors(FilesInterceptor('newImages', 10, {
     storage: diskStorage({
       destination: './uploads/products',
       filename: (req, file, cb) => {
@@ -103,20 +119,41 @@ export class ProductsController {
   }))
   update(
     @Param('id', ParseIntPipe) id: number,
-    @Body() updateProductDto: UpdateProductDto,
-    @UploadedFiles() files?: Array<Express.Multer.File>, // REVISI: Dibuat opsional
+    @Body() rawDto: UpdateProductDto,
+    @UploadedFiles() files?: Array<Express.Multer.File>,
   ) {
-    // REVISI: Kirim URL gambar baru dan DTO yang mungkin berisi `imagesToDelete`.
+    const processedDto: any = { ...rawDto };
+
+    if (processedDto.prices && typeof processedDto.prices === 'string') {
+        try { processedDto.prices = JSON.parse(processedDto.prices); }
+        catch (e) { throw new BadRequestException('Format "prices" tidak valid.'); }
+    }
+    if (processedDto.careDetails && typeof processedDto.careDetails === 'string') {
+        try { processedDto.careDetails = JSON.parse(processedDto.careDetails); }
+        catch (e) { throw new BadRequestException('Format "careDetails" tidak valid.'); }
+    }
+    if (processedDto.imagesToDelete && typeof processedDto.imagesToDelete === 'string') {
+        try { 
+          const parsed = JSON.parse(processedDto.imagesToDelete);
+          // Frontend mungkin mengirim string "1,2,3" yang tidak di-parse sebagai JSON array
+          if(typeof parsed === 'string') {
+             processedDto.imagesToDelete = parsed.split(',').map(Number);
+          } else {
+             processedDto.imagesToDelete = parsed;
+          }
+        }
+        catch (e) { 
+            // Fallback jika dikirim sebagai string biasa "1,2,3"
+            processedDto.imagesToDelete = processedDto.imagesToDelete.split(',').map(Number);
+        }
+    }
+
     const newImageUrls = files ? files.map(file => `/uploads/products/${file.filename}`) : [];
-    return this.productsService.update(id, updateProductDto, newImageUrls);
+    return this.productsService.update(id, processedDto, newImageUrls);
   }
 
   @Delete(':id')
   @Roles(Role.OWNER, Role.ADMIN)
-  @ApiOperation({ summary: 'Menghapus produk (Admin/Owner Only)' })
-  @ApiParam({ name: 'id', description: 'ID Produk' })
-  @ApiResponse({ status: 200, description: 'Produk berhasil dihapus.' })
-  @ApiNotFoundResponse({ description: 'Produk tidak ditemukan.' })
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.productsService.remove(id);
   }

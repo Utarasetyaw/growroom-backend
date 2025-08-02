@@ -16,8 +16,6 @@ export class ProductsService {
       },
     },
     subCategory: true,
-    // REVISI: Tambahkan careDetails ke include agar selalu dikembalikan
-    careDetails: true, 
   };
 
   async findAll() {
@@ -40,23 +38,16 @@ export class ProductsService {
     return product;
   }
 
-  async create(createProductDto: CreateProductDto, imageUrls: string[]) {
-    const { prices, careDetails, ...productData } = createProductDto;
+  async create(createProductDto: any, imageUrls: string[]) {
+    const { prices, ...productData } = createProductDto;
 
     const dataToCreate: Prisma.ProductCreateInput = {
       ...productData,
-      // REVISI: Langsung berikan objek/array JavaScript, jangan di-stringify.
-      // Prisma akan menanganinya secara otomatis untuk tipe data Json.
-      careDetails: careDetails ? JSON.parse(JSON.stringify(careDetails)) : undefined,
-      subCategory: {
-        connect: { id: productData.subCategoryId }
-      },
       images: {
         create: imageUrls.map(url => ({ url })),
       },
     };
 
-    // REVISI: Tambahkan filter validasi untuk harga, sama seperti di metode update.
     if (prices && prices.length > 0) {
       const validPrices = prices.filter(p => p.currencyId != null && p.price != null);
       if (validPrices.length > 0) {
@@ -72,8 +63,8 @@ export class ProductsService {
     });
   }
 
-  async update(id: number, updateProductDto: UpdateProductDto, newImageUrls: string[]) {
-    const { prices, imagesToDelete, careDetails, ...productData } = updateProductDto;
+  async update(id: number, updateProductDto: any, newImageUrls: string[]) {
+    const { prices, imagesToDelete, ...productData } = updateProductDto;
 
     return this.prisma.$transaction(async (tx) => {
       const product = await tx.product.findUnique({ where: { id } });
@@ -81,53 +72,41 @@ export class ProductsService {
         throw new NotFoundException(`Product with ID ${id} not found.`);
       }
 
-      // Gabungkan semua data skalar yang akan diupdate
-      const scalarDataToUpdate: Prisma.ProductUpdateInput = {
-        ...productData,
-        // REVISI: Tangani update careDetails di sini, jangan di-stringify.
-        careDetails: careDetails ? JSON.parse(JSON.stringify(careDetails)) : undefined,
-      };
-
-      if (Object.keys(scalarDataToUpdate).length > 0) {
+      if (Object.keys(productData).length > 0) {
         await tx.product.update({
           where: { id },
-          data: scalarDataToUpdate,
+          data: productData,
         });
       }
-      
-      // Hapus gambar lama
+
       if (imagesToDelete && imagesToDelete.length > 0) {
         await tx.productImage.deleteMany({
           where: { productId: id, id: { in: imagesToDelete } },
         });
       }
 
-      // Tambah gambar baru
       if (newImageUrls && newImageUrls.length > 0) {
         await tx.productImage.createMany({
           data: newImageUrls.map(url => ({ url, productId: id })),
         });
       }
 
-      // Update harga
-      if (prices) { // REVISI: Bisa juga untuk mengosongkan harga dengan array kosong
+      if (prices) {
         await tx.productPrice.deleteMany({ where: { productId: id } });
-
         if (prices.length > 0) {
-            const validPrices = prices.filter(p => p.currencyId != null && p.price != null);
-            if(validPrices.length > 0) {
-                await tx.productPrice.createMany({
-                    data: validPrices.map(price => ({
-                        productId: id,
-                        currencyId: price.currencyId!,
-                        price: price.price!,
-                    })),
-                });
-            }
+          const validPrices = prices.filter(p => p.currencyId != null && p.price != null);
+          if (validPrices.length > 0) {
+            await tx.productPrice.createMany({
+              data: validPrices.map(price => ({
+                productId: id,
+                currencyId: price.currencyId!,
+                price: price.price!,
+              })),
+            });
+          }
         }
       }
 
-      // Kembalikan data produk terbaru
       return tx.product.findUnique({
         where: { id },
         include: this.productInclude,
