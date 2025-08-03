@@ -8,6 +8,10 @@ import { UpdateProductDto } from './dto/update-product.dto';
 export class ProductsService {
   constructor(private prisma: PrismaService) {}
 
+  /**
+   * Mendefinisikan relasi yang akan disertakan dalam query produk.
+   * Digunakan kembali di beberapa metode untuk konsistensi.
+   */
   private readonly productInclude = {
     images: true,
     prices: {
@@ -18,6 +22,9 @@ export class ProductsService {
     subCategory: true,
   };
 
+  /**
+   * Mengambil semua produk. Umumnya untuk panel admin.
+   */
   async findAll() {
     return this.prisma.product.findMany({
       include: this.productInclude,
@@ -27,6 +34,9 @@ export class ProductsService {
     });
   }
 
+  /**
+   * Mengambil satu produk berdasarkan ID.
+   */
   async findOne(id: number) {
     const product = await this.prisma.product.findUnique({
       where: { id },
@@ -38,6 +48,9 @@ export class ProductsService {
     return product;
   }
 
+  /**
+   * Membuat produk baru.
+   */
   async create(createProductDto: any, imageUrls: string[]) {
     const { prices, ...productData } = createProductDto;
 
@@ -63,6 +76,9 @@ export class ProductsService {
     });
   }
 
+  /**
+   * Mengupdate produk yang ada.
+   */
   async update(id: number, updateProductDto: any, newImageUrls: string[]) {
     const { prices, imagesToDelete, ...productData } = updateProductDto;
 
@@ -114,11 +130,30 @@ export class ProductsService {
     });
   }
 
+  /**
+   * Menghapus produk.
+   */
   async remove(id: number) {
     const product = await this.prisma.product.findUnique({ where: { id } });
     if (!product) {
       throw new NotFoundException(`Product with ID ${id} not found.`);
     }
     return this.prisma.product.delete({ where: { id } });
+  }
+
+  // 👇 METODE BARU UNTUK KEBUTUHAN FRONTEND
+  /**
+   * Mengambil produk yang ditandai sebagai 'Best Product'.
+   * @param limit Jumlah maksimal produk yang ingin diambil.
+   */
+  async findBestProducts(limit: number = 8) {
+    return this.prisma.product.findMany({
+      where: {
+        isBestProduct: true, // Filter berdasarkan flag 'isBestProduct'
+        isActive: true,      // Pastikan hanya produk aktif yang tampil
+      },
+      take: limit, // Batasi jumlah hasil
+      include: this.productInclude,
+    });
   }
 }

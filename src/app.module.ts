@@ -21,9 +21,10 @@ import { ChatMessagesModule } from './chat-messages/chat-messages.module';
 import { ChatModule } from './chat/chat.module';
 import { FinanceModule } from './finance/finance.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { UserFrontendModule } from './user_frontend/user_frontend.module';
 
 @Module({
-  imports: [PrismaModule, UsersModule, AuthModule, TestimonialsModule, GeneralsettingModule, LanguagesModule, CurrenciesModule, PaymentmethodModule, ShippingProviderModule, ShippingZoneModule, ShippingRateModule, CategoriesModule, SubcategoriesModule, ProductsModule, OrdersModule, ConversationsModule, ChatMessagesModule, ChatModule, FinanceModule, DashboardModule,],
+  imports: [PrismaModule, UsersModule, AuthModule, TestimonialsModule, GeneralsettingModule, LanguagesModule, CurrenciesModule, PaymentmethodModule, ShippingProviderModule, ShippingZoneModule, ShippingRateModule, CategoriesModule, SubcategoriesModule, ProductsModule, OrdersModule, ConversationsModule, ChatMessagesModule, ChatModule, FinanceModule, DashboardModule, UserFrontendModule,],
   controllers: [AppController],
   providers: [AppService],
 })
