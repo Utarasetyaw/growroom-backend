@@ -75,9 +75,15 @@ export class UserFrontendService {
 
   /**
    * Mengambil data untuk halaman "About".
-   * Data ini diambil dari semua pengaturan umum.
    */
   async getAboutPageData() {
     return this.generalsettingService.findOne();
+  }
+
+  /**
+   * Mengambil data untuk komponen layout (Nav & Footer).
+   */
+  async getNavAndFooterData() {
+    return this.generalsettingService.findForNavAndFooter();
   }
 }

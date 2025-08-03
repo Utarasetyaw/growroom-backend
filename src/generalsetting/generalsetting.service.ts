@@ -6,17 +6,17 @@ import { UpdateShippingModeDto } from './dto/update-shipping-mode.dto';
 export class GeneralsettingService {
   constructor(private prisma: PrismaService) {}
 
+  // --- Metode untuk Panel Admin ---
+
   /**
-   * Mengambil semua data pengaturan umum.
-   * Umumnya untuk panel admin.
+   * Mengambil semua data pengaturan umum untuk panel admin.
    */
   async findOne() {
     return this.prisma.generalSetting.findUnique({ where: { id: 1 } });
   }
 
   /**
-   * Mengupdate data pengaturan umum.
-   * Umumnya untuk panel admin.
+   * Mengupdate data pengaturan umum dari panel admin.
    */
   async update(data: any) {
     return this.prisma.generalSetting.update({
@@ -26,8 +26,7 @@ export class GeneralsettingService {
   }
 
   /**
-   * Mengupdate mode pengiriman saja.
-   * Umumnya untuk panel admin.
+   * Mengupdate mode pengiriman saja dari panel admin.
    */
   async updateShippingMode(dto: UpdateShippingModeDto) {
     return this.prisma.generalSetting.update({
@@ -38,10 +37,10 @@ export class GeneralsettingService {
     });
   }
 
-  // 👇 METODE BARU UNTUK KEBUTUHAN FRONTEND
+  // --- Metode untuk Frontend ---
+
   /**
-   * Mengambil data pengaturan umum khusus untuk ditampilkan di homepage frontend.
-   * Metode ini hanya mengambil field yang diperlukan untuk efisiensi.
+   * Mengambil data spesifik untuk Homepage.
    */
   async findForHomepage() {
     return this.prisma.generalSetting.findUnique({
@@ -50,6 +49,23 @@ export class GeneralsettingService {
         shopName: true,
         bannerImageUrl: true,
         bannerVideoUrl: true,
+      },
+    });
+  }
+
+  /**
+   * Mengambil data spesifik untuk Navigasi dan Footer.
+   */
+  async findForNavAndFooter() {
+    return this.prisma.generalSetting.findUnique({
+      where: { id: 1 },
+      select: {
+        shopName: true,
+        shopDescription: true,
+        logoUrl: true,
+        faviconUrl: true,
+        address: true,
+        socialMedia: true,
       },
     });
   }
