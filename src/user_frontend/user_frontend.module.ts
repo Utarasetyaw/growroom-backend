@@ -9,6 +9,9 @@ import { TestimonialsModule } from '../testimonials/testimonials.module';
 import { GeneralsettingModule } from '../generalsetting/generalsetting.module';
 import { SubcategoriesModule } from '../subcategories/subcategories.module';
 import { UsersModule } from '../users/users.module';
+import { CartModule } from '../cart/cart.module';
+import { PaymentmethodModule } from '../paymentmethod/paymentmethod.module';
+import { ShippingZoneModule } from '../shipping-zone/shipping-zone.module';
 
 @Module({
   // Daftarkan semua module di sini agar service-nya dapat di-inject
@@ -19,6 +22,9 @@ import { UsersModule } from '../users/users.module';
     GeneralsettingModule,
     SubcategoriesModule,
     UsersModule,
+    CartModule,
+    PaymentmethodModule,
+    ShippingZoneModule,
   ],
   controllers: [UserFrontendController],
   providers: [UserFrontendService],

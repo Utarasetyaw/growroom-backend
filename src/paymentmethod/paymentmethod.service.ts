@@ -19,4 +19,11 @@ export class PaymentmethodService {
       data,
     });
   }
+
+   async findAllActive() {
+    return this.prisma.paymentMethod.findMany({
+      where: { isActive: true },
+      orderBy: { id: 'asc' },
+    });
+  }
 }

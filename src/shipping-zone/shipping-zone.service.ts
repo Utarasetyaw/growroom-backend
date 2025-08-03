@@ -62,4 +62,17 @@ export class ShippingZoneService {
   async remove(id: number) {
     return this.prisma.shippingZone.delete({ where: { id } });
   }
+
+  async findAllActive() {
+    return this.prisma.shippingZone.findMany({
+      where: { isActive: true },
+      include: {
+        rates: {
+          where: { isActive: true },
+          include: { prices: true },
+        },
+      },
+      orderBy: { id: 'asc' },
+    });
+  }
 }

@@ -5,20 +5,24 @@ import { ProductsService } from '../products/products.service';
 import { TestimonialsService } from '../testimonials/testimonials.service';
 import { SubcategoriesService } from '../subcategories/subcategories.service';
 import { UsersService } from '../users/users.service';
+import { CartService } from '../cart/cart.service';
+import { PaymentmethodService } from '../paymentmethod/paymentmethod.service';
+import { ShippingZoneService } from '../shipping-zone/shipping-zone.service';
 import { GetProductsQueryDto } from './dto/get-products-query.dto';
 import { UpdateMyProfileDto } from '../users/dto/update-my-profile.dto';
 
 @Injectable()
 export class UserFrontendService {
   constructor(
-    // Services yang sudah ada sebelumnya
     private readonly categoriesService: CategoriesService,
     private readonly productsService: ProductsService,
     private readonly testimonialsService: TestimonialsService,
     private readonly generalsettingService: GeneralsettingService,
     private readonly subcategoriesService: SubcategoriesService,
-    // 👇 Tambahkan UsersService di sini
     private readonly usersService: UsersService,
+    private readonly cartService: CartService,
+    private readonly paymentMethodService: PaymentmethodService,
+    private readonly shippingZoneService: ShippingZoneService,
   ) {}
 
   /**
@@ -107,5 +111,25 @@ export class UserFrontendService {
    */
   async updateMyProfile(userId: number, dto: UpdateMyProfileDto) {
     return this.usersService.updateMe(userId, dto);
+  }
+
+  /**
+   * Mengambil semua data yang dibutuhkan untuk halaman checkout.
+   * @param userId ID user dari token JWT.
+   */
+  async getCheckoutPageData(userId: number) {
+    const [cart, userProfile, shippingMethods, paymentMethods] = await Promise.all([
+      this.cartService.getCart(userId),
+      this.usersService.findMe(userId),
+      this.shippingZoneService.findAllActive(),
+      this.paymentMethodService.findAllActive(),
+    ]);
+
+    return {
+      cart,
+      userProfile,
+      shippingMethods,
+      paymentMethods,
+    };
   }
 }

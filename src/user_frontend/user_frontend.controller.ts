@@ -54,11 +54,11 @@ export class UserFrontendController {
     return this.userFrontendService.getNavAndFooterData();
   }
   
-  // --- Profile Endpoints (Wajib Login) ---
+  // --- Private Endpoints (Wajib Login) ---
 
   @Get('profile')
-  @UseGuards(JwtAuthGuard) // 🛡️ WAJIB: Melindungi endpoint ini
-  @ApiBearerAuth()        // Swagger: Menandakan butuh token
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Mengambil data profil user yang login' })
   @ApiResponse({ status: 200, description: 'Data profil berhasil diambil.' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -67,13 +67,23 @@ export class UserFrontendController {
   }
 
   @Patch('profile')
-  @UseGuards(JwtAuthGuard) // 🛡️ WAJIB: Melindungi endpoint ini
-  @ApiBearerAuth()        // Swagger: Menandakan butuh token
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Mengupdate data profil user yang login' })
   @ApiBody({ type: UpdateMyProfileDto })
   @ApiResponse({ status: 200, description: 'Profil berhasil diperbarui.' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   updateMyProfile(@Req() req: RequestWithUser, @Body() dto: UpdateMyProfileDto) {
     return this.userFrontendService.updateMyProfile(req.user.userId, dto);
+  }
+
+  @Get('checkout')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Mengambil semua data untuk halaman checkout' })
+  @ApiResponse({ status: 200, description: 'Data checkout berhasil diambil.' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  getCheckoutPageData(@Req() req: RequestWithUser) {
+    return this.userFrontendService.getCheckoutPageData(req.user.userId);
   }
 }
