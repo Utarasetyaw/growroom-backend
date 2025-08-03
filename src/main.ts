@@ -18,14 +18,14 @@ async function bootstrap() {
   });
 
   app.enableCors({
-    origin: 'http://localhost:5173',
+    origin: '*',
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
   });
 
   const config = new DocumentBuilder()
-    .setTitle('GlowRoom API')
-    .setDescription('Dokumentasi API untuk GlowRoom')
+    .setTitle('GrowRoom API')
+    .setDescription('Dokumentasi API untuk GrowRoom')
     .setVersion('1.0')
     .addBearerAuth()
     .build();
