@@ -8,6 +8,8 @@ import { UsersService } from '../users/users.service';
 import { CartService } from '../cart/cart.service';
 import { PaymentmethodService } from '../paymentmethod/paymentmethod.service';
 import { ShippingZoneService } from '../shipping-zone/shipping-zone.service';
+import { LanguagesService } from '../languages/languages.service';
+import { CurrenciesService } from '../currencies/currencies.service';
 import { GetProductsQueryDto } from './dto/get-products-query.dto';
 import { UpdateMyProfileDto } from '../users/dto/update-my-profile.dto';
 
@@ -23,6 +25,8 @@ export class UserFrontendService {
     private readonly cartService: CartService,
     private readonly paymentMethodService: PaymentmethodService,
     private readonly shippingZoneService: ShippingZoneService,
+    private readonly languagesService: LanguagesService,
+    private readonly currenciesService: CurrenciesService,
   ) {}
 
   /**
@@ -73,7 +77,7 @@ export class UserFrontendService {
     ]);
 
     if (!productDetail) {
-      throw new NotFoundException(`Product with ID ${id} not found.`);
+      throw new NotFoundException(`Product with ID #${id} not found.`);
     }
 
     return {
@@ -90,10 +94,22 @@ export class UserFrontendService {
   }
 
   /**
-   * Mengambil data untuk komponen layout (Nav & Footer).
+   * Mengambil data untuk komponen layout (Nav & Footer),
+   * termasuk bahasa dan mata uang yang aktif.
    */
   async getNavAndFooterData() {
-    return this.generalsettingService.findForNavAndFooter();
+    const [layoutSettings, activeLanguages, activeCurrencies] =
+      await Promise.all([
+        this.generalsettingService.findForNavAndFooter(),
+        this.languagesService.findAllActive(),
+        this.currenciesService.findAllActive(),
+      ]);
+
+    return {
+      layoutSettings,
+      activeLanguages,
+      activeCurrencies,
+    };
   }
 
   /**

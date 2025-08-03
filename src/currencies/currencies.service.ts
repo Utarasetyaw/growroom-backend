@@ -29,4 +29,11 @@ export class CurrenciesService {
     }
     return this.prisma.currency.update({ where: { id }, data });
   }
+
+  async findAllActive() {
+    return this.prisma.currency.findMany({
+      where: { isActive: true },
+      orderBy: { isDefault: 'desc' }, // Default currency akan muncul pertama
+    });
+  }
 }

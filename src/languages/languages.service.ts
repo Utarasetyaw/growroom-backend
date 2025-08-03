@@ -28,4 +28,11 @@ export class LanguagesService {
     }
     return this.prisma.language.update({ where: { id }, data: dto });
   }
+
+  async findAllActive() {
+    return this.prisma.language.findMany({
+      where: { isActive: true },
+      orderBy: { isDefault: 'desc' }, // Default language akan muncul pertama
+    });
+  }
 }
