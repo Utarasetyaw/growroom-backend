@@ -4,16 +4,21 @@ import { GeneralsettingService } from '../generalsetting/generalsetting.service'
 import { ProductsService } from '../products/products.service';
 import { TestimonialsService } from '../testimonials/testimonials.service';
 import { SubcategoriesService } from '../subcategories/subcategories.service';
+import { UsersService } from '../users/users.service';
 import { GetProductsQueryDto } from './dto/get-products-query.dto';
+import { UpdateMyProfileDto } from '../users/dto/update-my-profile.dto';
 
 @Injectable()
 export class UserFrontendService {
   constructor(
+    // Services yang sudah ada sebelumnya
     private readonly categoriesService: CategoriesService,
     private readonly productsService: ProductsService,
     private readonly testimonialsService: TestimonialsService,
     private readonly generalsettingService: GeneralsettingService,
     private readonly subcategoriesService: SubcategoriesService,
+    // 👇 Tambahkan UsersService di sini
+    private readonly usersService: UsersService,
   ) {}
 
   /**
@@ -85,5 +90,22 @@ export class UserFrontendService {
    */
   async getNavAndFooterData() {
     return this.generalsettingService.findForNavAndFooter();
+  }
+
+  /**
+   * Mengambil data profil user yang sedang login.
+   * @param userId ID user dari token JWT.
+   */
+  async getMyProfile(userId: number) {
+    return this.usersService.findMe(userId);
+  }
+
+  /**
+   * Mengupdate data profil user yang sedang login.
+   * @param userId ID user dari token JWT.
+   * @param dto Data baru untuk diupdate.
+   */
+  async updateMyProfile(userId: number, dto: UpdateMyProfileDto) {
+    return this.usersService.updateMe(userId, dto);
   }
 }
