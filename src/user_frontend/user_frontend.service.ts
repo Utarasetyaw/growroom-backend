@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { CategoriesService } from '../categories/categories.service';
 import { GeneralsettingService } from '../generalsetting/generalsetting.service';
 import { ProductsService } from '../products/products.service';
@@ -40,7 +40,6 @@ export class UserFrontendService {
    * Mengambil data untuk halaman "Semua Produk" dengan paginasi dan filter.
    */
   async getProductsPageData(query: GetProductsQueryDto) {
-    // Jalankan semua query secara bersamaan untuk efisiensi
     const [categories, subCategories, paginatedProducts] = await Promise.all([
       this.categoriesService.findAll(),
       this.subcategoriesService.findAll(),
@@ -52,5 +51,33 @@ export class UserFrontendService {
       subCategories,
       products: paginatedProducts,
     };
+  }
+
+  /**
+   * Mengambil data untuk halaman detail produk.
+   * @param id ID dari produk yang ingin ditampilkan.
+   */
+  async getProductDetailPageData(id: number) {
+    const [productDetail, bestProducts] = await Promise.all([
+      this.productsService.findOne(id),
+      this.productsService.findBestProducts(8),
+    ]);
+
+    if (!productDetail) {
+      throw new NotFoundException(`Product with ID ${id} not found.`);
+    }
+
+    return {
+      productDetail,
+      bestProducts,
+    };
+  }
+
+  /**
+   * Mengambil data untuk halaman "About".
+   * Data ini diambil dari semua pengaturan umum.
+   */
+  async getAboutPageData() {
+    return this.generalsettingService.findOne();
   }
 }

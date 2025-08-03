@@ -1,4 +1,4 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Param, ParseIntPipe, Query } from '@nestjs/common';
 import { UserFrontendService } from './user_frontend.service';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { GetProductsQueryDto } from './dto/get-products-query.dto';
@@ -25,5 +25,20 @@ export class UserFrontendController {
   @ApiResponse({ status: 200, description: 'Data produk berhasil diambil.' })
   getAllProducts(@Query() query: GetProductsQueryDto) {
     return this.userFrontendService.getProductsPageData(query);
+  }
+
+  @Get('products/:id')
+  @ApiOperation({ summary: 'Mengambil data untuk halaman detail produk' })
+  @ApiResponse({ status: 200, description: 'Data detail produk berhasil diambil.' })
+  @ApiResponse({ status: 404, description: 'Produk tidak ditemukan.' })
+  getProductDetail(@Param('id', ParseIntPipe) id: number) {
+    return this.userFrontendService.getProductDetailPageData(id);
+  }
+
+  @Get('about')
+  @ApiOperation({ summary: 'Mengambil data untuk halaman About' })
+  @ApiResponse({ status: 200, description: 'Data halaman About berhasil diambil.' })
+  getAboutPage() {
+    return this.userFrontendService.getAboutPageData();
   }
 }
