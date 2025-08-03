@@ -1,10 +1,12 @@
+// File: src/testimonials/testimonials.module.ts
+
 import { Module } from '@nestjs/common';
 import { TestimonialsService } from './testimonials.service';
 import { TestimonialsController } from './testimonials.controller';
-import { PrismaService } from '../prisma/prisma.service';
 
 @Module({
   controllers: [TestimonialsController],
-  providers: [TestimonialsService, PrismaService],
+  providers: [TestimonialsService],
+  exports: [TestimonialsService],
 })
 export class TestimonialsModule {}

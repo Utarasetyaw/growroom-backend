@@ -7,14 +7,16 @@ import { CategoriesModule } from '../categories/categories.module';
 import { ProductsModule } from '../products/products.module';
 import { TestimonialsModule } from '../testimonials/testimonials.module';
 import { GeneralsettingModule } from '../generalsetting/generalsetting.module';
+import { SubcategoriesModule } from '../subcategories/subcategories.module';
 
 @Module({
-  // Daftarkan module di sini agar service-nya dapat di-inject
+  // Daftarkan semua module di sini agar service-nya dapat di-inject
   imports: [
     CategoriesModule,
     ProductsModule,
     TestimonialsModule,
     GeneralsettingModule,
+    SubcategoriesModule,
   ],
   controllers: [UserFrontendController],
   providers: [UserFrontendService],

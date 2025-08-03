@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { GetProductsQueryDto } from '../user_frontend/dto/get-products-query.dto';
 
 @Injectable()
 export class ProductsService {
@@ -141,7 +142,6 @@ export class ProductsService {
     return this.prisma.product.delete({ where: { id } });
   }
 
-  // 👇 METODE BARU UNTUK KEBUTUHAN FRONTEND
   /**
    * Mengambil produk yang ditandai sebagai 'Best Product'.
    * @param limit Jumlah maksimal produk yang ingin diambil.
@@ -149,11 +149,66 @@ export class ProductsService {
   async findBestProducts(limit: number = 8) {
     return this.prisma.product.findMany({
       where: {
-        isBestProduct: true, // Filter berdasarkan flag 'isBestProduct'
-        isActive: true,      // Pastikan hanya produk aktif yang tampil
+        isBestProduct: true,
+        isActive: true,
       },
-      take: limit, // Batasi jumlah hasil
+      take: limit,
       include: this.productInclude,
     });
+  }
+
+  // 👇 METODE BARU UNTUK HALAMAN SEMUA PRODUK (PAGINASI & FILTER)
+  /**
+   * Mengambil daftar produk dengan paginasi, filter, dan pencarian.
+   * @param query DTO yang berisi parameter paginasi dan filter.
+   */
+  async findPaginated(query: GetProductsQueryDto) {
+    const { page = 1, limit = 10, categoryId, subCategoryId, search } = query;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.ProductWhereInput = {
+      isActive: true,
+    };
+
+    if (search) {
+      // Pencarian case-insensitive pada field JSON 'name'
+      // Sesuaikan 'path' jika key bahasa default Anda berbeda (misal: 'en')
+      where.name = {
+        path: ['id'],
+        string_contains: search,
+        mode: 'insensitive',
+      };
+    }
+
+    if (subCategoryId) {
+      where.subCategoryId = subCategoryId;
+    } else if (categoryId) {
+      where.subCategory = {
+        categoryId: categoryId,
+      };
+    }
+
+    const [products, total] = await this.prisma.$transaction([
+      this.prisma.product.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: this.productInclude,
+      }),
+      this.prisma.product.count({ where }),
+    ]);
+
+    const totalPages = Math.ceil(total / limit);
+
+    return {
+      data: products,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages,
+      },
+    };
   }
 }

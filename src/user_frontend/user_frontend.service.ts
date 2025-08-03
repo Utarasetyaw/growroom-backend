@@ -3,6 +3,8 @@ import { CategoriesService } from '../categories/categories.service';
 import { GeneralsettingService } from '../generalsetting/generalsetting.service';
 import { ProductsService } from '../products/products.service';
 import { TestimonialsService } from '../testimonials/testimonials.service';
+import { SubcategoriesService } from '../subcategories/subcategories.service';
+import { GetProductsQueryDto } from './dto/get-products-query.dto';
 
 @Injectable()
 export class UserFrontendService {
@@ -11,28 +13,21 @@ export class UserFrontendService {
     private readonly productsService: ProductsService,
     private readonly testimonialsService: TestimonialsService,
     private readonly generalsettingService: GeneralsettingService,
+    private readonly subcategoriesService: SubcategoriesService,
   ) {}
 
   /**
-   * Mengambil dan menggabungkan semua data yang diperlukan untuk halaman utama.
-   * Fungsi ini memanggil beberapa service secara bersamaan untuk efisiensi.
-   * @returns {Promise<object>} Sebuah objek yang berisi data untuk:
-   * - categories: Daftar semua kategori.
-   * - bestProducts: Produk-produk unggulan atau terbaru.
-   * - testimonials: Daftar semua testimoni.
-   * - generalSettings: Pengaturan umum situs yang relevan untuk homepage.
+   * Mengambil data untuk halaman utama (homepage).
    */
   async getHomepageData() {
-    // Menjalankan semua promise secara bersamaan untuk mempercepat waktu respons
     const [categories, bestProducts, testimonials, generalSettings] =
       await Promise.all([
         this.categoriesService.findAll(),
-        this.productsService.findBestProducts(8), // Mengambil 8 produk unggulan/terbaru
+        this.productsService.findBestProducts(8),
         this.testimonialsService.findAll(),
         this.generalsettingService.findForHomepage(),
       ]);
 
-    // Mengembalikan semua data dalam satu objek terstruktur
     return {
       categories,
       bestProducts,
@@ -41,6 +36,21 @@ export class UserFrontendService {
     };
   }
 
-  // Anda dapat menambahkan metode lain di sini untuk halaman lain,
-  // misalnya getProductListPageData, getAboutPageData, dll.
+  /**
+   * Mengambil data untuk halaman "Semua Produk" dengan paginasi dan filter.
+   */
+  async getProductsPageData(query: GetProductsQueryDto) {
+    // Jalankan semua query secara bersamaan untuk efisiensi
+    const [categories, subCategories, paginatedProducts] = await Promise.all([
+      this.categoriesService.findAll(),
+      this.subcategoriesService.findAll(),
+      this.productsService.findPaginated(query),
+    ]);
+
+    return {
+      categories,
+      subCategories,
+      products: paginatedProducts,
+    };
+  }
 }
