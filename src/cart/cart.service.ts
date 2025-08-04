@@ -13,10 +13,11 @@ export class CartService {
         product: {
           include: {
             images: { take: 1, select: { url: true } },
+            // Ubah 'select' menjadi 'include' agar objek currency ikut terambil
             prices: {
-              take: 1,
-              select: { price: true },
-              // Anda bisa menambahkan 'where' di sini jika ingin harga mata uang tertentu
+              include: {
+                currency: true,
+              },
             },
           },
         },
