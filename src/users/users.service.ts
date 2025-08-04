@@ -24,18 +24,20 @@ export class UsersService {
     return user;
   }
 
-  async createUser(data: any): Promise<User> {
+  async createUser(data: any): Promise<Omit<User, 'password'>> {
     if (data.password) {
       data.password = await bcrypt.hash(data.password, 10);
     }
-    return this.prisma.user.create({ data });
+    const { password, ...user } = await this.prisma.user.create({ data });
+    return user;
   }
 
-  async updateUser(id: number, data: any): Promise<User> {
+  async updateUser(id: number, data: any): Promise<Omit<User, 'password'>> {
     if (data.password) {
       data.password = await bcrypt.hash(data.password, 10);
     }
-    return this.prisma.user.update({ where: { id }, data });
+    const { password, ...user } = await this.prisma.user.update({ where: { id }, data });
+    return user;
   }
 
   async deleteUser(id: number) {
@@ -43,35 +45,45 @@ export class UsersService {
   }
 
   async updatePermissions(id: number, permissions: string[]) {
-    return this.prisma.user.update({ where: { id }, data: { permissions } });
-  }
-
-  // ================== PROFILE USER (me) ==================
-  async findMe(userId: number) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      // ✅ PERBAIKAN: Pastikan 'role' dan 'permissions' disertakan dalam select
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,          // <-- WAJIB ADA
-        permissions: true,   // <-- WAJIB ADA
-        phone: true,
-        address: true,
-        city: true,
-        province: true,
-        country: true,
-        postalCode: true,
-        socialMedia: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-    if (!user) throw new NotFoundException('User profile not found');
+    const { password, ...user } = await this.prisma.user.update({ where: { id }, data: { permissions } });
     return user;
   }
 
+  // ================== PROFILE USER (me) ==================
+
+  /**
+   * Mengambil data profil lengkap untuk user yang sedang login,
+   * termasuk riwayat order dan isi keranjang.
+   * @param userId ID dari user yang sedang login
+   */
+  async findMe(userId: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        orders: {
+          orderBy: { createdAt: 'desc' },
+          take: 5, // Ambil 5 order terakhir untuk efisiensi
+        },
+        cart: {
+          include: {
+            items: true, // Sertakan item di dalam keranjang
+          },
+        },
+      },
+    });
+
+    if (!user) throw new NotFoundException('User profile not found');
+
+    // Hapus password dari objek sebelum dikirim ke frontend
+    const { password, ...result } = user;
+    return result;
+  }
+
+  /**
+   * Mengupdate data profil user yang sedang login.
+   * @param userId ID dari user yang sedang login
+   * @param data Data yang akan diupdate
+   */
   async updateMe(userId: number, data: any) {
     if (data.password) {
       data.password = await bcrypt.hash(data.password, 10);
@@ -79,6 +91,7 @@ export class UsersService {
     return this.prisma.user.update({
       where: { id: userId },
       data,
+      // Pilih field yang akan dikembalikan, pastikan tidak ada password
       select: {
         id: true, email: true, name: true, phone: true, address: true,
         city: true, province: true, country: true, postalCode: true,

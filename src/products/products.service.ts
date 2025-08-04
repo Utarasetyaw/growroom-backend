@@ -1,18 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateProductDto } from './dto/create-product.dto';
-import { UpdateProductDto } from './dto/update-product.dto';
 import { GetProductsQueryDto } from '../user_frontend/dto/get-products-query.dto';
 
 @Injectable()
 export class ProductsService {
   constructor(private prisma: PrismaService) {}
 
-  /**
-   * Mendefinisikan relasi yang akan disertakan dalam query produk.
-   * Digunakan kembali di beberapa metode untuk konsistensi.
-   */
   private readonly productInclude = {
     images: true,
     prices: {
@@ -23,9 +17,6 @@ export class ProductsService {
     subCategory: true,
   };
 
-  /**
-   * Mengambil semua produk. Umumnya untuk panel admin.
-   */
   async findAll() {
     return this.prisma.product.findMany({
       include: this.productInclude,
@@ -35,9 +26,6 @@ export class ProductsService {
     });
   }
 
-  /**
-   * Mengambil satu produk berdasarkan ID.
-   */
   async findOne(id: number) {
     const product = await this.prisma.product.findUnique({
       where: { id },
@@ -49,12 +37,8 @@ export class ProductsService {
     return product;
   }
 
-  /**
-   * Membuat produk baru.
-   */
   async create(createProductDto: any, imageUrls: string[]) {
     const { prices, ...productData } = createProductDto;
-
     const dataToCreate: Prisma.ProductCreateInput = {
       ...productData,
       images: {
@@ -77,9 +61,6 @@ export class ProductsService {
     });
   }
 
-  /**
-   * Mengupdate produk yang ada.
-   */
   async update(id: number, updateProductDto: any, newImageUrls: string[]) {
     const { prices, imagesToDelete, ...productData } = updateProductDto;
 
@@ -131,9 +112,6 @@ export class ProductsService {
     });
   }
 
-  /**
-   * Menghapus produk.
-   */
   async remove(id: number) {
     const product = await this.prisma.product.findUnique({ where: { id } });
     if (!product) {
@@ -142,10 +120,6 @@ export class ProductsService {
     return this.prisma.product.delete({ where: { id } });
   }
 
-  /**
-   * Mengambil produk yang ditandai sebagai 'Best Product'.
-   * @param limit Jumlah maksimal produk yang ingin diambil.
-   */
   async findBestProducts(limit: number = 8) {
     return this.prisma.product.findMany({
       where: {
@@ -157,13 +131,12 @@ export class ProductsService {
     });
   }
 
-  // 👇 METODE BARU UNTUK HALAMAN SEMUA PRODUK (PAGINASI & FILTER)
   /**
    * Mengambil daftar produk dengan paginasi, filter, dan pencarian.
    * @param query DTO yang berisi parameter paginasi dan filter.
    */
   async findPaginated(query: GetProductsQueryDto) {
-    const { page = 1, limit = 10, categoryId, subCategoryId, search } = query;
+    const { page = 1, limit = 12, categoryId, subCategoryId, search, variant, availability, minPrice, maxPrice } = query;
     const skip = (page - 1) * limit;
 
     const where: Prisma.ProductWhereInput = {
@@ -171,8 +144,6 @@ export class ProductsService {
     };
 
     if (search) {
-      // Pencarian case-insensitive pada field JSON 'name'
-      // Sesuaikan 'path' jika key bahasa default Anda berbeda (misal: 'en')
       where.name = {
         path: ['id'],
         string_contains: search,
@@ -185,6 +156,32 @@ export class ProductsService {
     } else if (categoryId) {
       where.subCategory = {
         categoryId: categoryId,
+      };
+    }
+
+    if (variant) {
+      where.variant = {
+        path: ['id'],
+        equals: variant,
+      };
+    }
+
+    if (availability) {
+      if (availability === 'AVAILABLE') {
+        where.stock = { gt: 0 };
+      } else if (availability === 'OUT_OF_STOCK') {
+        where.stock = { equals: 0 };
+      }
+    }
+
+    if (minPrice !== undefined || maxPrice !== undefined) {
+      where.prices = {
+        some: {
+          price: {
+            gte: minPrice,
+            lte: maxPrice,
+          },
+        },
       };
     }
 
