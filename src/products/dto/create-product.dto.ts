@@ -1,88 +1,71 @@
+// File: src/products/dto/create-product.dto.ts
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  IsBoolean,
-  IsInt,
-  IsNumber,
-  IsObject,
-  IsOptional,
-  IsString,
-} from 'class-validator';
-import { Type, Transform } from 'class-transformer';
+import { Type } from 'class-transformer';
+import { IsString, IsInt, IsBoolean, IsOptional, Min, IsNotEmpty, IsJSON, IsNumber } from 'class-validator';
 
-// Helper function untuk mengubah string JSON menjadi objek JavaScript
-const parseJson = ({ value }: { value: any }) => {
-  if (typeof value === 'string') {
-    try {
-      return JSON.parse(value);
-    } catch (e) {
-      // Jika parsing gagal, kembalikan string asli agar validator lain bisa menanganinya
-      return value;
-    }
-  }
-  return value; // Kembalikan nilai asli jika sudah objek
-};
-
-// --- DTO UTAMA ---
 export class CreateProductDto {
-  @ApiProperty({ type: 'string', description: 'JSON string untuk nama produk multi-bahasa', example: '{"id":"Bunga","en":"Flower"}' })
-  @Transform(parseJson)
-  @IsObject()
-  name: Record<string, string>;
+  @ApiProperty({
+    description: 'Nama produk dalam format JSON (multibahasa)',
+    example: '{"id": "Monstera Deliciosa", "en": "Swiss Cheese Plant"}',
+  })
+  @IsJSON()
+  name: string;
 
-  @ApiProperty({ type: 'string', description: 'JSON string untuk varian produk multi-bahasa', example: '{"id":"Merah","en":"Red"}' })
-  @Transform(parseJson)
-  @IsObject()
-  variant: Record<string, string>;
+  @ApiProperty({
+    description: 'Varian produk dalam format JSON (multibahasa)',
+    example: '{"id": "Variegata", "en": "Variegated"}',
+  })
+  @IsJSON()
+  variant: string;
 
-  @ApiPropertyOptional({ type: 'string', description: 'JSON string untuk deskripsi produk multi-bahasa' })
-  @Transform(parseJson)
+  @ApiPropertyOptional({
+    description: 'Deskripsi produk dalam format JSON (multibahasa)',
+    example: '{"id": "Tanaman hias populer...", "en": "A popular houseplant..."}',
+  })
   @IsOptional()
-  @IsObject()
-  description?: Record<string, string>;
+  @IsJSON()
+  description?: string;
 
-  @ApiProperty()
+  @ApiProperty({ description: 'Jumlah stok produk', example: 100 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  stock: number;
+
+  @ApiPropertyOptional({ description: 'Berat produk dalam gram (opsional)', example: 500 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  weight?: number;
+  
+  @ApiProperty({
+    description: 'Detail perawatan dalam format JSON string dari sebuah array',
+    example: '[{"name":{"id":"Penyiraman","en":"Watering"},"value":{"id":"Seminggu sekali","en":"Once a week"}}]'
+  })
+  @IsJSON()
+  careDetails: string;
+
+  @ApiPropertyOptional({ description: 'Apakah ini produk unggulan?', default: false })
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  isBestProduct?: boolean;
+
+  @ApiPropertyOptional({ description: 'Apakah produk ini aktif dan ditampilkan?', default: true })
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  isActive?: boolean;
+  
+  @ApiProperty({ description: 'ID dari sub-kategori produk', example: 1 })
   @Type(() => Number)
   @IsInt()
   subCategoryId: number;
 
-  @ApiProperty()
-  @Type(() => Number)
-  @IsInt()
-  stock: number;
-
-  @ApiPropertyOptional()
-  @Type(() => Number)
-  @IsOptional()
-  @IsNumber()
-  weight?: number;
-
-  @ApiPropertyOptional({ type: 'string' })
-  @Transform(({ value }) => value === 'true' || value === true)
-  @IsOptional()
-  @IsBoolean()
-  isBestProduct?: boolean;
-
-  @ApiPropertyOptional({ type: 'string' })
-  @Transform(({ value }) => value === 'true' || value === true)
-  @IsOptional()
-  @IsBoolean()
-  isActive?: boolean;
-
-  // REVISI: Terima 'prices' sebagai string JSON. Validasi nested dihapus.
-  @ApiPropertyOptional({
-    type: 'string',
-    description: 'JSON string dari array harga. Contoh: \'[{"price":150000,"currencyId":1}]\'',
+  @ApiProperty({
+    description: 'Harga produk dalam berbagai mata uang (format JSON string dari sebuah array)',
+    example: '[{"currencyId":1,"price":150000},{"currencyId":2,"price":10}]'
   })
-  @IsOptional()
-  @IsString()
-  prices?: string;
-
-  // REVISI: Terima 'careDetails' sebagai string JSON. Validasi nested dihapus.
-  @ApiPropertyOptional({
-    type: 'string',
-    description: 'JSON string dari array care details. Contoh: \'[{"name":{"id":"Ukuran"},"value":{"id":"Besar"}}]\'',
-  })
-  @IsOptional()
-  @IsString()
-  careDetails?: string;
+  @IsJSON()
+  prices: string;
 }

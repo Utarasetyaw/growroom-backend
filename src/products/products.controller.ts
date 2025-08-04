@@ -48,12 +48,18 @@ export class ProductsController {
 
   @Get()
   @Roles(Role.OWNER, Role.ADMIN)
+  @ApiOperation({ summary: 'List semua produk (Admin/Owner Only)' })
+  @ApiResponse({ status: 200, description: 'List semua produk.', type: [ProductResponseDto] })
   findAll() {
     return this.productsService.findAll();
   }
 
   @Get(':id')
   @Roles(Role.OWNER, Role.ADMIN)
+  @ApiOperation({ summary: 'Lihat detail satu produk (Admin/Owner Only)' })
+  @ApiParam({ name: 'id', description: 'ID Produk' })
+  @ApiResponse({ status: 200, description: 'Detail produk.', type: ProductResponseDto })
+  @ApiNotFoundResponse({ description: 'Produk tidak ditemukan.' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.productsService.findOne(id);
   }
@@ -62,6 +68,7 @@ export class ProductsController {
   @Roles(Role.OWNER, Role.ADMIN)
   @ApiOperation({ summary: 'Membuat produk baru (Admin/Owner Only)' })
   @ApiConsumes('multipart/form-data')
+  @ApiResponse({ status: 201, description: 'Produk berhasil dibuat.', type: ProductResponseDto })
   @UseInterceptors(FilesInterceptor('images', 10, {
     storage: diskStorage({
       destination: './uploads/products',
@@ -107,7 +114,10 @@ export class ProductsController {
   @Patch(':id')
   @Roles(Role.OWNER, Role.ADMIN)
   @ApiOperation({ summary: 'Update produk (Admin/Owner Only)' })
+  @ApiParam({ name: 'id', description: 'ID Produk yang akan diupdate' })
   @ApiConsumes('multipart/form-data')
+  @ApiResponse({ status: 200, description: 'Produk berhasil di-update.', type: ProductResponseDto })
+  @ApiNotFoundResponse({ description: 'Produk tidak ditemukan.' })
   @UseInterceptors(FilesInterceptor('newImages', 10, {
     storage: diskStorage({
       destination: './uploads/products',
@@ -135,7 +145,6 @@ export class ProductsController {
     if (processedDto.imagesToDelete && typeof processedDto.imagesToDelete === 'string') {
         try { 
           const parsed = JSON.parse(processedDto.imagesToDelete);
-          // Frontend mungkin mengirim string "1,2,3" yang tidak di-parse sebagai JSON array
           if(typeof parsed === 'string') {
              processedDto.imagesToDelete = parsed.split(',').map(Number);
           } else {
@@ -143,7 +152,6 @@ export class ProductsController {
           }
         }
         catch (e) { 
-            // Fallback jika dikirim sebagai string biasa "1,2,3"
             processedDto.imagesToDelete = processedDto.imagesToDelete.split(',').map(Number);
         }
     }
@@ -154,6 +162,10 @@ export class ProductsController {
 
   @Delete(':id')
   @Roles(Role.OWNER, Role.ADMIN)
+  @ApiOperation({ summary: 'Hapus produk (Admin/Owner Only)' })
+  @ApiParam({ name: 'id', description: 'ID Produk yang akan dihapus' })
+  @ApiResponse({ status: 200, description: 'Produk berhasil dihapus.' })
+  @ApiNotFoundResponse({ description: 'Produk tidak ditemukan.' })
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.productsService.remove(id);
   }

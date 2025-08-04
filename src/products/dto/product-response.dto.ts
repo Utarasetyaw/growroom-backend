@@ -1,76 +1,96 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-// --- Nested DTOs for Response Clarity ---
+// --- DTO Pendukung untuk Respons ---
 
 class ImageDto {
-  @ApiProperty() id: number;
-  @ApiProperty() url: string;
+  @ApiProperty({ description: 'ID unik dari gambar.' })
+  id: number;
+
+  @ApiProperty({ description: 'URL dari gambar produk.' })
+  url: string;
 }
 
 class CurrencyDto {
-  @ApiProperty() id: number;
-  @ApiProperty() code: string;
-  @ApiProperty() symbol: string;
+  @ApiProperty({ description: 'ID unik dari mata uang.' })
+  id: number;
+  
+  @ApiProperty({ description: 'Kode ISO mata uang (e.g., IDR, USD).', example: 'IDR' })
+  code: string;
+
+  @ApiProperty({ description: 'Simbol mata uang (e.g., Rp, $).', example: 'Rp' })
+  symbol: string;
 }
 
 class PriceDto {
-  @ApiProperty() id: number;
-  @ApiProperty() price: number;
-  @ApiProperty({ type: () => CurrencyDto })
+  @ApiProperty({ description: 'ID unik dari harga.' })
+  id: number;
+
+  @ApiProperty({ description: 'Nilai harga produk.' })
+  price: number;
+  
+  @ApiProperty({ type: () => CurrencyDto, description: 'Detail mata uang terkait.' })
   currency: CurrencyDto;
 }
 
 class SubCategoryDto {
-  @ApiProperty() id: number;
-  // REVISI: Mengganti `any` dengan tipe yang lebih spesifik untuk dokumentasi
-  @ApiProperty({ type: 'object', additionalProperties: { type: 'string' }, example: { id: 'Daun Lebar', en: 'Wide Leaf' } })
+  @ApiProperty({ description: 'ID unik dari sub-kategori.' })
+  id: number;
+  
+  @ApiProperty({ type: 'object', additionalProperties: { type: 'string' }, example: { id: 'Daun Lebar', en: 'Wide Leaf' }, description: 'Nama sub-kategori dalam berbagai bahasa.' })
   name: Record<string, string>;
 }
 
-// REVISI: DTO baru untuk mendefinisikan struktur careDetails dalam response
 class CareDetailResponseDto {
-  @ApiProperty({ type: 'object', additionalProperties: { type: 'string' }, example: { id: 'Ukuran Pot', en: 'Pot Size' }})
+  @ApiProperty({ type: 'object', additionalProperties: { type: 'string' }, example: { id: 'Ukuran Pot', en: 'Pot Size' }, description: 'Nama detail perawatan (multibahasa).' })
   name: Record<string, string>;
 
-  @ApiProperty({ type: 'object', additionalProperties: { type: 'string' }, example: { id: '15 cm', en: '15 cm' }})
+  @ApiProperty({ type: 'object', additionalProperties: { type: 'string' }, example: { id: '15 cm', en: '15 cm' }, description: 'Nilai detail perawatan (multibahasa).' })
   value: Record<string, string>;
 }
 
 
-// --- Main Response DTO ---
+// --- DTO Utama untuk Respons Produk ---
 
 export class ProductResponseDto {
-  @ApiProperty() id: number;
+  @ApiProperty({ description: 'ID unik produk.' })
+  id: number;
 
-  // REVISI: Tipe `any` diubah menjadi Record<string, string> untuk kejelasan
-  @ApiProperty({ type: 'object', additionalProperties: { type: 'string' }})
+  @ApiProperty({ type: 'object', additionalProperties: { type: 'string' }, description: 'Nama produk dalam berbagai bahasa.' })
   name: Record<string, string>;
 
-  @ApiProperty({ type: 'object', additionalProperties: { type: 'string' }})
+  @ApiProperty({ type: 'object', additionalProperties: { type: 'string' }, description: 'Varian produk dalam berbagai bahasa.' })
   variant: Record<string, string>;
   
   @ApiPropertyOptional({ type: 'object', additionalProperties: { type: 'string' }, description: "Deskripsi produk dalam berbagai bahasa." })
   description: Record<string, string> | null;
 
-  @ApiProperty() stock: number;
+  @ApiProperty({ description: 'Jumlah stok produk saat ini.' })
+  stock: number;
 
-  @ApiProperty({ nullable: true }) weight: number | null;
+  @ApiProperty({ description: 'Berat produk dalam gram.', nullable: true })
+  weight: number | null;
 
-  // REVISI: Menggunakan DTO yang baru untuk careDetails
-  @ApiPropertyOptional({ type: () => [CareDetailResponseDto], nullable: true, description: "Detail perawatan produk" })
+  @ApiPropertyOptional({ type: () => [CareDetailResponseDto], description: "Detail perawatan produk.", nullable: true })
   careDetails: CareDetailResponseDto[] | null;
 
-  @ApiProperty() isBestProduct: boolean;
+  @ApiProperty({ description: 'Menandakan apakah produk ini adalah produk unggulan.' })
+  isBestProduct: boolean;
 
-  @ApiProperty() isActive: boolean;
+  @ApiProperty({ description: 'Menandakan apakah produk ini aktif dan ditampilkan.' })
+  isActive: boolean;
 
-  @ApiProperty() createdAt: Date;
+  @ApiProperty({ description: 'Waktu produk dibuat.' })
+  createdAt: Date;
 
-  @ApiProperty() updatedAt: Date;
+  @ApiProperty({ description: 'Waktu produk terakhir diupdate.' })
+  updatedAt: Date;
 
-  @ApiProperty({ type: () => [ImageDto] }) images: ImageDto[];
+  @ApiProperty({ type: () => [ImageDto], description: 'Daftar gambar produk.' })
+  images: ImageDto[];
 
-  @ApiProperty({ type: () => [PriceDto] }) prices: PriceDto[];
+  @ApiProperty({ type: () => [PriceDto], description: 'Daftar harga produk dalam berbagai mata uang.' })
+  prices: PriceDto[];
 
-  @ApiProperty({ type: () => SubCategoryDto }) subCategory: SubCategoryDto;
+  @ApiProperty({ type: () => SubCategoryDto, description: 'Sub-kategori tempat produk ini berada.' })
+  subCategory: SubCategoryDto;
 }
