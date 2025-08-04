@@ -63,13 +63,20 @@ export class ShippingZoneService {
     return this.prisma.shippingZone.delete({ where: { id } });
   }
 
-  async findAllActive() {
+   async findAllActive() {
     return this.prisma.shippingZone.findMany({
       where: { isActive: true },
       include: {
         rates: {
           where: { isActive: true },
-          include: { prices: true },
+          // Pastikan Anda menyertakan currency di dalam prices
+          include: {
+            prices: {
+              include: {
+                currency: true, // INI BAGIAN PENTINGNYA
+              },
+            },
+          },
         },
       },
       orderBy: { id: 'asc' },
