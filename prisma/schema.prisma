@@ -78,15 +78,18 @@ model Currency {
 model Category {
   id            Int           @id @default(autoincrement())
   name          Json          // { "id": "...", "en": "...", ... }
+  imageUrl      String?       // [BARU] Tambahkan kolom ini
   subCategories SubCategory[]
 }
 
 model SubCategory {
-  id         Int       @id @default(autoincrement())
-  name       Json      // Multilang
-  category   Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  id         Int      @id @default(autoincrement())
+  name       Json     // Multilang
+  imageUrl   String?  // [BARU] Tambahkan kolom ini
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   categoryId Int
   products   Product[]
+
   @@unique([categoryId, name])
 }
 
