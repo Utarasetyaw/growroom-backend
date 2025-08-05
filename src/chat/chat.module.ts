@@ -1,23 +1,26 @@
-// src/chat/chat.module.ts
 import { Module } from '@nestjs/common';
 import { ChatGateway } from './chat.gateway';
 import { ChatService } from './chat.service';
 import { JwtModule } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConversationsService } from '../conversations/conversations.service';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 
 @Module({
   imports: [
-    // Konfigurasi modul JWT untuk verifikasi token di gateway
-    JwtModule.register({
-      secret: process.env.JWT_SECRET || 'your-fallback-secret-key', // Gunakan secret dari environment variable
+    // Gunakan registerAsync untuk mengambil secret dari ConfigService secara dinamis
+    JwtModule.registerAsync({
+      imports: [ConfigModule], // Impor ConfigModule agar ConfigService bisa di-inject
+      useFactory: async (configService: ConfigService) => ({
+        secret: configService.get<string>('JWT_SECRET'), // Ambil secret key dari .env
+      }),
+      inject: [ConfigService], // Inject ConfigService ke dalam factory
     }),
   ],
-  // Sediakan semua service yang dibutuhkan oleh ChatGateway
   providers: [
     ChatGateway,
     ChatService,
-    ConversationsService, // Service ini dibutuhkan untuk logika findOrCreate
+    ConversationsService,
     PrismaService,
   ],
   exports: [ChatService],

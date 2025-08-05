@@ -8,38 +8,48 @@ export class ConversationsService {
   constructor(private prisma: PrismaService) {}
 
   /**
-   * Mencari percakapan yang sudah ada untuk seorang user.
-   * Jika tidak ditemukan, maka akan membuat percakapan baru.
+   * Mencari atau membuat percakapan untuk user, dan mengembalikan data lengkap.
    * @param userId - ID dari user
-   * @returns Conversation object
    */
   async findOrCreateForUser(userId: number) {
+    // Definisikan data yang ingin disertakan agar konsisten
+    const includePayload = {
+        messages: { 
+            orderBy: { createdAt: 'asc' as const }, 
+            include: { sender: true } 
+        }, 
+        user: true, 
+        assignedTo: true 
+    };
+
     const existingConversation = await this.prisma.conversation.findFirst({
       where: { userId },
+      include: includePayload, // Gunakan include payload di sini
     });
 
     if (existingConversation) {
       return existingConversation;
     }
 
+    // Jika tidak ada, buat yang baru dengan menyertakan data yang sama
     return this.prisma.conversation.create({
       data: {
         userId: userId,
-        status: 'OPEN', // Status default untuk admin
+        status: 'OPEN',
       },
+      include: includePayload, // Gunakan include payload di sini juga
     });
   }
 
   /**
-   * Membuat percakapan baru secara eksplisit (digunakan oleh REST API).
+   * Membuat percakapan baru secara eksplisit (digunakan oleh admin).
    */
   async create(dto: CreateConversationDto) {
     return this.prisma.conversation.create({ data: dto });
   }
 
   /**
-   * Mengambil semua percakapan. Dioptimalkan untuk hanya mengambil
-   * pesan terakhir sebagai preview.
+   * Mengambil semua percakapan untuk panel admin.
    */
   async findAll() {
     return this.prisma.conversation.findMany({
@@ -48,7 +58,7 @@ export class ConversationsService {
         assignedTo: { select: { id: true, name: true, email: true, role: true } },
         messages: {
           orderBy: { createdAt: 'desc' },
-          take: 1, // Hanya ambil 1 pesan terakhir
+          take: 1,
           include: {
             sender: { select: { role: true } }
           }
@@ -68,9 +78,9 @@ export class ConversationsService {
         user: { select: { id: true, name: true, email: true, role: true } },
         assignedTo: { select: { id: true, name: true, email: true, role: true } },
         messages: {
-          orderBy: { createdAt: 'asc' }, // Ambil semua pesan, urutkan dari yang terlama
+          orderBy: { createdAt: 'asc' },
           include: {
-            sender: true // Sertakan info lengkap pengirim pesan
+            sender: true
           }
         }
       }
@@ -85,7 +95,6 @@ export class ConversationsService {
    * Mengupdate status atau admin yang ditugaskan pada sebuah percakapan.
    */
   async update(id: number, dto: UpdateConversationDto) {
-    // Pastikan percakapan ada sebelum update
     const existing = await this.prisma.conversation.findUnique({ where: { id } });
     if (!existing) {
       throw new NotFoundException(`Conversation with ID ${id} not found`);
@@ -97,7 +106,6 @@ export class ConversationsService {
    * Menghapus sebuah percakapan.
    */
   async remove(id: number) {
-    // Pastikan percakapan ada sebelum dihapus
     const existing = await this.prisma.conversation.findUnique({ where: { id } });
     if (!existing) {
       throw new NotFoundException(`Conversation with ID ${id} not found`);

@@ -1,4 +1,3 @@
-// src/auth/auth.service.ts
 import { Injectable, BadRequestException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
@@ -15,15 +14,12 @@ export class AuthService {
   ) {}
 
   /**
-   * Validates a user by checking their email and password.
-   * @param email The user's email.
-   * @param pass The user's plain-text password.
-   * @returns The user object without the password hash if validation is successful, otherwise null.
+   * Memvalidasi user berdasarkan email, password, DAN role yang diharapkan.
    */
-  async validateUser(email: string, pass: string): Promise<any> {
+  async validateUser(email: string, pass: string, expectedRole: Role): Promise<any> {
     const user = await this.usersService.findOneByEmail(email);
-    if (user && (await bcrypt.compare(pass, user.password))) {
-      // Omit password from the result
+    // Cek user ada, password cocok, DAN role-nya sesuai
+    if (user && user.role === expectedRole && (await bcrypt.compare(pass, user.password))) {
       const { password, ...result } = user;
       return result;
     }
@@ -31,19 +27,23 @@ export class AuthService {
   }
 
   /**
-   * Creates a JWT and returns it along with user data upon successful login.
-   * @param user The user object, typically from validateUser.
-   * @returns An object containing a success message, the access token, and the user profile.
+   * Membuat token JWT untuk user yang sudah tervalidasi.
    */
-  async login(user: User) {
+  async login(user: User, expectedRole: Role) {
+    // Validasi tambahan untuk memastikan role-nya benar
+    if (user.role !== expectedRole) {
+      throw new UnauthorizedException(`This login is for ${expectedRole}s only.`);
+    }
+
+    // 👇 INI BAGIAN PALING PENTING
+    // Payload harus berisi 'sub' yang diisi dengan 'user.id'
     const payload = {
       email: user.email,
-      sub: user.id, // 'sub' is standard for subject (user ID)
+      sub: user.id, // 'sub' akan dibaca sebagai 'userId' oleh JwtStrategy
       role: user.role,
       permissions: user.permissions,
     };
     
-    // Omit password from the returned user profile
     const { password, ...userProfile } = user;
 
     return {
@@ -54,24 +54,18 @@ export class AuthService {
   }
 
   /**
-   * Registers a new user with a specified role.
-   * @param data The user data including email, name, and password.
-   * @param allowedRole The role the new user should have.
-   * @returns A success message and the newly created user object (without password).
+   * Registrasi user baru.
    */
   async register(data: any, allowedRole: Role) {
-    // 1. Check if email is already registered
     const existingUser = await this.usersService.findOneByEmail(data.email);
     if (existingUser) {
       throw new BadRequestException('Email is already registered.');
     }
 
-    // 2. Ensure registration is for the allowed role
     if (data.role !== allowedRole) {
       throw new ForbiddenException(`Registration is only allowed for the ${allowedRole} role.`);
     }
 
-    // 3. (Optional) Limit to a single OWNER
     if (allowedRole === Role.OWNER) {
       const ownerExists = await this.prisma.user.findFirst({ where: { role: Role.OWNER } });
       if (ownerExists) {
@@ -79,21 +73,18 @@ export class AuthService {
       }
     }
 
-    // 4. Hash the password
     const hashedPassword = await bcrypt.hash(data.password, 10);
 
-    // 5. Create the new user in the database
     const newUser = await this.prisma.user.create({
       data: {
         email: data.email,
         name: data.name,
         password: hashedPassword,
         role: data.role,
-        permissions: data.permissions || [], // Ensure permissions is an array
+        permissions: data.permissions || [],
       },
     });
 
-    // 6. Return a clean response without the password
     const { password, ...result } = newUser;
     return {
       message: 'Registration successful',

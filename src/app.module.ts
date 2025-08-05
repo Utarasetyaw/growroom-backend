@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config'; // 👈 1. Impor ConfigModule
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -25,7 +26,34 @@ import { UserFrontendModule } from './user_frontend/user_frontend.module';
 import { CartModule } from './cart/cart.module';
 
 @Module({
-  imports: [PrismaModule, UsersModule, AuthModule, TestimonialsModule, GeneralsettingModule, LanguagesModule, CurrenciesModule, PaymentmethodModule, ShippingProviderModule, ShippingZoneModule, ShippingRateModule, CategoriesModule, SubcategoriesModule, ProductsModule, OrdersModule, ConversationsModule, ChatMessagesModule, ChatModule, FinanceModule, DashboardModule, UserFrontendModule, CartModule,],
+  imports: [
+    // 👇 2. Daftarkan di sini, di bagian paling atas
+    ConfigModule.forRoot({
+      isGlobal: true, // Membuat ConfigService tersedia di semua modul
+    }),
+    PrismaModule, 
+    UsersModule, 
+    AuthModule, 
+    TestimonialsModule, 
+    GeneralsettingModule, 
+    LanguagesModule, 
+    CurrenciesModule, 
+    PaymentmethodModule, 
+    ShippingProviderModule, 
+    ShippingZoneModule, 
+    ShippingRateModule, 
+    CategoriesModule, 
+    SubcategoriesModule, 
+    ProductsModule, 
+    OrdersModule, 
+    ConversationsModule, 
+    ChatMessagesModule, 
+    ChatModule, 
+    FinanceModule, 
+    DashboardModule, 
+    UserFrontendModule, 
+    CartModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })

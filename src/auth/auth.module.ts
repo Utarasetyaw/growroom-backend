@@ -4,23 +4,26 @@ import { AuthController } from './auth.controller';
 import { UsersModule } from '../users/users.module';
 import { PassportModule } from '@nestjs/passport';
 import { JwtModule } from '@nestjs/jwt';
-import { JwtStrategy } from './strategies/jwt.strategy'; // Tambahkan ini!
-export const jwtSecret = 'SECRET_KEY_YANG_SANGAT_RAHASIA';
-
+import { JwtStrategy } from './strategies/jwt.strategy';
+import { ConfigModule, ConfigService } from '@nestjs/config'; // 👈 1. Impor ConfigModule & ConfigService
 @Module({
   imports: [
     UsersModule,
     PassportModule,
-    JwtModule.register({
-      secret: jwtSecret,
-      signOptions: { expiresIn: '1d' },
+    ConfigModule, // 👈 2. Impor ConfigModule di sini
+    // 👇 3. Ganti JwtModule.register menjadi registerAsync
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
+        secret: configService.get<string>('JWT_SECRET'), // Ambil secret dari .env
+        signOptions: { expiresIn: '1d' },
+      }),
+      inject: [ConfigService],
     }),
   ],
   controllers: [AuthController],
-  providers: [
-    AuthService,
-    JwtStrategy, // <- Tambahkan strategy di provider
-  ],
-  exports: [JwtModule],
+  providers: [AuthService, JwtStrategy],
+  // 👇 4. Pastikan JwtModule juga diekspor
+  exports: [AuthService, JwtModule],
 })
 export class AuthModule {}

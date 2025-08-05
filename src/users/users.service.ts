@@ -60,13 +60,27 @@ export class UsersService {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: {
+        // 👇 REVISI BAGIAN INI
         orders: {
+          include: {
+            // Sertakan item di dalam setiap order
+            orderItems: {
+              include: {
+                // Sertakan detail produk di dalam setiap item
+                product: {
+                  include: {
+                    images: { take: 1 }, // Ambil 1 gambar produk
+                  },
+                },
+              },
+            },
+          },
           orderBy: { createdAt: 'desc' },
-          take: 5, // Ambil 5 order terakhir untuk efisiensi
+          take: 5,
         },
         cart: {
           include: {
-            items: true, // Sertakan item di dalam keranjang
+            items: true,
           },
         },
       },
@@ -74,7 +88,6 @@ export class UsersService {
 
     if (!user) throw new NotFoundException('User profile not found');
 
-    // Hapus password dari objek sebelum dikirim ke frontend
     const { password, ...result } = user;
     return result;
   }

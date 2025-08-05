@@ -1,3 +1,5 @@
+// File: src/chat/chat.gateway.ts
+
 import {
   WebSocketGateway,
   SubscribeMessage,
@@ -12,6 +14,7 @@ import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { ChatService } from './chat.service';
 import { ConversationsService } from '../conversations/conversations.service';
+import { Role } from '@prisma/client';
 
 @WebSocketGateway({ namespace: '/ws-chat', cors: true })
 export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
@@ -33,15 +36,25 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       if (!token) {
         throw new Error('No token provided');
       }
+      
       const payload = this.jwtService.verify(token);
-      client.data.user = payload;
+      
+      // 👇 REVISI KUNCI ADA DI SINI
+      // Buat objek user yang konsisten di dalam data socket
+      client.data.user = {
+        userId: payload.sub, // Ambil ID dari 'sub'
+        email: payload.email,
+        role: payload.role,
+        permissions: payload.permissions,
+      };
 
-      // Jika admin/owner, join ke room khusus admin untuk notifikasi
-      if (payload.role === 'ADMIN' || payload.role === 'OWNER') {
+      if (client.data.user.role === Role.ADMIN || client.data.user.role === Role.OWNER) {
         client.join('room-admins');
       }
       
-      console.log(`[WS] User connected: ${payload.email} (id: ${payload.userId})`);
+      // Sekarang client.data.user.userId sudah benar
+      console.log(`[WS] User connected: ${client.data.user.email} (id: ${client.data.user.userId})`);
+
     } catch (e) {
       console.error(`[WS] Authentication error: ${e.message}`);
       client.disconnect();
@@ -61,7 +74,6 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     if (data && data.conversationId) {
       const roomName = `room-${data.conversationId}`;
       client.join(roomName);
-      // Kirim konfirmasi kembali ke client bahwa mereka berhasil join
       client.emit('joinedRoom', { room: roomName });
     }
   }
@@ -71,7 +83,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     @MessageBody() payload: { content: string, conversationId?: number },
     @ConnectedSocket() client: Socket,
   ) {
-    const user = client.data.user;
+    const user = client.data.user; // Sekarang user memiliki properti .userId
     const { content, conversationId: targetConversationId } = payload;
 
     if (!content || !user) {
@@ -80,35 +92,33 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     }
 
     let conversation;
+    let finalConversationId: number;
 
-    if (user.role === 'USER') {
-      // Jika pengirim adalah USER, cari atau buat percakapan baru untuknya.
+    if (user.role === Role.USER) {
       conversation = await this.conversationsService.findOrCreateForUser(user.userId);
+      finalConversationId = conversation.id;
     } else {
-      // Jika pengirim adalah ADMIN/OWNER, mereka harus menyediakan conversationId.
       if (!targetConversationId) {
         client.emit('error', { message: 'Admin/Owner must provide a target conversationId.' });
         return;
       }
-      conversation = { id: targetConversationId };
+      finalConversationId = targetConversationId;
     }
 
-    // Simpan pesan ke database melalui service.
-    const message = await this.chatService.saveMessage(conversation.id, user.userId, content);
+    // Sekarang user.userId sudah pasti berisi angka ID yang benar
+    const message = await this.chatService.saveMessage(finalConversationId, user.userId, content);
 
-    // Kirim pesan baru ke semua client yang ada di room percakapan tersebut.
-    this.server.to(`room-${conversation.id}`).emit('newMessage', message);
+    const roomName = `room-${finalConversationId}`;
+    this.server.to(roomName).emit('newMessage', message);
 
-    // Jika pengirim adalah USER, kirim notifikasi ke semua admin yang online.
-    if (user.role === 'USER') {
+    if (user.role === Role.USER) {
       this.server.to('room-admins').emit('adminNotification', {
         type: 'NEW_MESSAGE',
-        conversationId: conversation.id,
+        conversationId: finalConversationId,
         message,
       });
     }
     
-    // Kirim konfirmasi kembali ke pengirim bahwa pesan berhasil dikirim.
     return message;
   }
 }

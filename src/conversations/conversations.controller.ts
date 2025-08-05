@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, ParseIntPipe, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, ParseIntPipe, UseGuards, Req } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth, ApiNotFoundResponse } from '@nestjs/swagger';
 import { ConversationsService } from './conversations.service';
 import { CreateConversationDto } from './dto/create-conversation.dto';
@@ -8,17 +8,19 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '@prisma/client';
 import { ConversationResponseDto } from './dto/conversation-response.dto';
+import { RequestWithUser } from '../common/interfaces/request-with-user.interface';
 
 @ApiTags('Conversations')
 @ApiBearerAuth()
 @Controller('conversations')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ConversationsController {
-  constructor(private readonly service: ConversationsService) {}
+  constructor(private readonly service: ConversationsService) { }
 
+  // Endpoint ini bisa dihapus jika pembuatan percakapan hanya dimulai oleh user melalui getMyConversation
   @Post()
-  @Roles(Role.OWNER, Role.ADMIN, Role.USER)
-  @ApiOperation({ summary: 'Membuat percakapan baru' })
+  @Roles(Role.OWNER, Role.ADMIN) 
+  @ApiOperation({ summary: 'Membuat percakapan baru (Admin/Owner)' })
   @ApiResponse({ status: 201, description: 'Percakapan berhasil dibuat.', type: ConversationResponseDto })
   create(@Body() dto: CreateConversationDto) {
     return this.service.create(dto);
@@ -31,6 +33,15 @@ export class ConversationsController {
   findAll() {
     return this.service.findAll();
   }
+  
+  // Endpoint baru khusus untuk User mengambil percakapannya sendiri
+  @Get('my/conversation')
+  @Roles(Role.USER) // Hanya untuk user
+  @ApiOperation({ summary: 'Mendapatkan percakapan milik user yang login (atau membuat baru jika belum ada)' })
+  @ApiResponse({ status: 200, description: 'Data percakapan user.', type: ConversationResponseDto })
+  getMyConversation(@Req() req: RequestWithUser) {
+    return this.service.findOrCreateForUser(req.user.userId);
+  }
 
   @Get(':id')
   @Roles(Role.OWNER, Role.ADMIN, Role.USER)
@@ -39,6 +50,7 @@ export class ConversationsController {
   @ApiResponse({ status: 200, description: 'Detail percakapan.', type: ConversationResponseDto })
   @ApiNotFoundResponse({ description: 'Percakapan tidak ditemukan.' })
   findOne(@Param('id', ParseIntPipe) id: number) {
+    // Di sini bisa ditambahkan validasi agar user hanya bisa akses percakapannya sendiri
     return this.service.findOne(id);
   }
 
