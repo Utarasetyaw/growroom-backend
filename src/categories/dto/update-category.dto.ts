@@ -4,10 +4,11 @@ import { IsOptional, IsString, IsBooleanString } from 'class-validator';
 export class UpdateCategoryDto {
   @ApiPropertyOptional({
     description: "Nama kategori dalam format JSON string. Cth: '{\"id\":\"Busana Pria\"}'",
-    example: '{"id":"Busana Pria"}'
+    example: '{"id":"Busana Pria"}',
+    type: 'string', // Menegaskan tipe di Swagger
   })
   @IsOptional()
-  @IsString() // ✅ PERUBAHAN: Diubah dari IsObject menjadi IsString
+  @IsString()
   name?: Record<string, string> | string;
 
   @ApiPropertyOptional({

@@ -38,7 +38,7 @@ export class CategoriesService {
   create(dto: Pick<CreateCategoryDto, 'name'>, imageUrl?: string) {
     return this.prisma.category.create({
       data: {
-        name: dto.name, // Pastikan hanya 'name' yang diambil
+        name: dto.name as any, // Diterima sebagai object setelah parsing di controller
         imageUrl,
       },
     });
@@ -65,7 +65,7 @@ export class CategoriesService {
     }
 
     if (oldImageUrl && (newImageUrl || deleteImage)) {
-      // [PERBAIKAN] Hapus '/' di awal path sebelum join
+      // Menghapus '/' di awal path sebelum digabungkan
       const oldImagePath = join(process.cwd(), oldImageUrl.substring(1));
       if (fs.existsSync(oldImagePath)) {
         try {
@@ -86,7 +86,7 @@ export class CategoriesService {
     const category = await this.findOne(id);
 
     if (category.imageUrl) {
-      // [PERBAIKAN] Hapus '/' di awal path sebelum join
+      // Menghapus '/' di awal path sebelum digabungkan
       const imagePath = join(process.cwd(), category.imageUrl.substring(1));
       if (fs.existsSync(imagePath)) {
         try {

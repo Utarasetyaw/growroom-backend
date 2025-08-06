@@ -1,27 +1,9 @@
 import {
-  Controller,
-  Get,
-  Post,
-  Patch,
-  Delete,
-  Param,
-  Body,
-  ParseIntPipe,
-  UseGuards,
-  UseInterceptors,
-  UploadedFile,
-  BadRequestException,
+  Controller, Get, Post, Patch, Delete, Param, Body, ParseIntPipe,
+  UseGuards, UseInterceptors, UploadedFile, BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiParam,
-  ApiBearerAuth,
-  ApiNotFoundResponse,
-  ApiConsumes,
-} from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth, ApiNotFoundResponse, ApiConsumes } from '@nestjs/swagger';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { CategoriesService } from './categories.service';
@@ -43,6 +25,7 @@ export class CategoriesController {
   @Get()
   @Roles(Role.OWNER)
   @ApiOperation({ summary: 'Dapatkan semua kategori (OWNER only)' })
+  @ApiResponse({ status: 200, description: 'List semua kategori berhasil diambil.', type: [CategoryResponseDto] })
   findAll() {
     return this.service.findAll();
   }
@@ -50,15 +33,19 @@ export class CategoriesController {
   @Get(':id')
   @Roles(Role.OWNER)
   @ApiOperation({ summary: 'Dapatkan detail satu kategori (OWNER only)' })
+  @ApiParam({ name: 'id', description: 'ID unik dari kategori', example: 1 })
+  @ApiResponse({ status: 200, description: 'Detail kategori berhasil diambil.', type: CategoryResponseDto })
+  @ApiNotFoundResponse({ description: 'Kategori dengan ID tersebut tidak ditemukan.' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.service.findOne(id);
   }
 
-  // --- [PERBAIKAN] Metode Create ---
   @Post()
   @Roles(Role.OWNER)
   @ApiOperation({ summary: 'Buat kategori baru (Owner Only)' })
   @ApiConsumes('multipart/form-data')
+  @ApiResponse({ status: 201, description: 'Kategori berhasil dibuat.', type: CategoryResponseDto })
+  @ApiResponse({ status: 400, description: 'Format data tidak valid.' })
   @UseInterceptors(
     FileInterceptor('image', {
       storage: diskStorage({
@@ -76,7 +63,6 @@ export class CategoriesController {
   ) {
     let parsedName: Record<string, string>;
     try {
-      // Mengubah `body.name` dari string JSON menjadi objek
       parsedName = JSON.parse(body.name as any);
     } catch (e) {
       throw new BadRequestException('Format "name" tidak valid. Harus berupa JSON string.');
@@ -88,11 +74,13 @@ export class CategoriesController {
     return this.service.create(dto, imageUrl);
   }
 
-  // --- [PERBAIKAN] Metode Update ---
   @Patch(':id')
   @Roles(Role.OWNER)
   @ApiOperation({ summary: 'Update kategori (OWNER only)' })
   @ApiConsumes('multipart/form-data')
+  @ApiParam({ name: 'id', description: 'ID dari kategori yang akan di-update', example: 1 })
+  @ApiResponse({ status: 200, description: 'Kategori berhasil diupdate.', type: CategoryResponseDto })
+  @ApiNotFoundResponse({ description: 'Kategori dengan ID tersebut tidak ditemukan.' })
   @UseInterceptors(
     FileInterceptor('image', {
       storage: diskStorage({
@@ -110,8 +98,6 @@ export class CategoriesController {
     @UploadedFile() file?: Express.Multer.File,
   ) {
     const dataToUpdate: any = {};
-    
-    // Mengubah `body.name` dari string JSON menjadi objek jika ada
     if (body.name) {
       try {
         dataToUpdate.name = JSON.parse(body.name as any);
@@ -124,9 +110,7 @@ export class CategoriesController {
     const deleteImageFlag = body.deleteImage === 'true';
 
     if (newImageUrl && deleteImageFlag) {
-      throw new BadRequestException(
-        'Cannot upload a new image and delete the existing one at the same time.',
-      );
+      throw new BadRequestException('Cannot upload a new image and delete the existing one at the same time.');
     }
 
     return this.service.update(id, dataToUpdate, newImageUrl, deleteImageFlag);
@@ -135,6 +119,9 @@ export class CategoriesController {
   @Delete(':id')
   @Roles(Role.OWNER)
   @ApiOperation({ summary: 'Hapus kategori (OWNER only)' })
+  @ApiParam({ name: 'id', description: 'ID dari kategori yang akan dihapus', example: 1 })
+  @ApiResponse({ status: 200, description: 'Kategori berhasil dihapus.' })
+  @ApiNotFoundResponse({ description: 'Kategori dengan ID tersebut tidak ditemukan.' })
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.service.remove(id);
   }
