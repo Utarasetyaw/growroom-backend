@@ -5,17 +5,19 @@ export class CreateSubcategoryDto {
   @ApiProperty({
     description: "Nama sub-kategori dalam format JSON string. Cth: '{\"id\":\"Kemeja\",\"en\":\"Shirt\"}'",
     example: '{"id":"Kemeja","en":"Shirt"}',
+    type: 'string', // Menegaskan tipe di Swagger
   })
   @IsNotEmpty()
-  @IsString() // ✅ PERUBAHAN: Dari IsObject menjadi IsString
+  @IsString()
   name: Record<string, string> | string;
 
   @ApiProperty({
     description: 'ID dari kategori induk tempat sub-kategori ini bernaung.',
-    example: '1', // Dikirim sebagai string
+    example: '1',
+    type: 'string', // Menegaskan tipe di Swagger
   })
   @IsNotEmpty()
-  @IsNumberString() // ✅ PERUBAHAN: Dari IsInt menjadi IsNumberString
+  @IsNumberString()
   categoryId: number | string;
 
   @ApiPropertyOptional({

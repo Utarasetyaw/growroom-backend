@@ -31,6 +31,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '@prisma/client';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { ProductResponseDto } from './dto/product-response.dto';
 
 @ApiTags('Products')
 @ApiBearerAuth()
@@ -41,19 +42,28 @@ export class ProductsController {
 
   @Get()
   @Roles(Role.OWNER, Role.ADMIN)
+  @ApiOperation({ summary: 'List semua produk (Admin/Owner Only)' })
+  @ApiResponse({ status: 200, description: 'List produk berhasil diambil.', type: [ProductResponseDto] })
   findAll() {
     return this.productsService.findAll();
   }
 
   @Get(':id')
   @Roles(Role.OWNER, Role.ADMIN)
+  @ApiOperation({ summary: 'Lihat detail satu produk (Admin/Owner Only)' })
+  @ApiParam({ name: 'id', description: 'ID unik dari produk', example: 1 })
+  @ApiResponse({ status: 200, description: 'Detail produk berhasil diambil.', type: ProductResponseDto })
+  @ApiNotFoundResponse({ description: 'Produk dengan ID tersebut tidak ditemukan.' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.productsService.findOne(id);
   }
 
   @Post()
   @Roles(Role.OWNER, Role.ADMIN)
+  @ApiOperation({ summary: 'Membuat produk baru (Admin/Owner Only)' })
   @ApiConsumes('multipart/form-data')
+  @ApiResponse({ status: 201, description: 'Produk berhasil dibuat.', type: ProductResponseDto })
+  @ApiResponse({ status: 400, description: 'Format data tidak valid.' })
   @UseInterceptors(FilesInterceptor('images', 10, {
     storage: diskStorage({
       destination: './uploads/products',
@@ -67,7 +77,6 @@ export class ProductsController {
     @UploadedFiles() files: Array<Express.Multer.File>,
     @Body() rawDto: CreateProductDto,
   ) {
-    // [PERBAIKAN] Parsing semua field yang dikirim sebagai JSON string
     const jsonFields = ['name', 'variant', 'description', 'prices', 'careDetails'];
     const processedDto: any = { ...rawDto };
 
@@ -87,7 +96,11 @@ export class ProductsController {
 
   @Patch(':id')
   @Roles(Role.OWNER, Role.ADMIN)
+  @ApiOperation({ summary: 'Update produk (Admin/Owner Only)' })
   @ApiConsumes('multipart/form-data')
+  @ApiParam({ name: 'id', description: 'ID dari produk yang akan di-update', example: 1 })
+  @ApiResponse({ status: 200, description: 'Produk berhasil diupdate.', type: ProductResponseDto })
+  @ApiNotFoundResponse({ description: 'Produk dengan ID tersebut tidak ditemukan.' })
   @UseInterceptors(FilesInterceptor('newImages', 10, {
     storage: diskStorage({
       destination: './uploads/products',
@@ -102,7 +115,6 @@ export class ProductsController {
     @Body() rawDto: UpdateProductDto,
     @UploadedFiles() files?: Array<Express.Multer.File>,
   ) {
-    // [PERBAIKAN] Parsing semua field yang dikirim sebagai JSON string
     const jsonFields = ['name', 'variant', 'description', 'prices', 'careDetails'];
     const processedDto: any = { ...rawDto };
 
@@ -122,6 +134,10 @@ export class ProductsController {
 
   @Delete(':id')
   @Roles(Role.OWNER, Role.ADMIN)
+  @ApiOperation({ summary: 'Hapus produk (Admin/Owner Only)' })
+  @ApiParam({ name: 'id', description: 'ID dari produk yang akan dihapus', example: 1 })
+  @ApiResponse({ status: 200, description: 'Produk berhasil dihapus.' })
+  @ApiNotFoundResponse({ description: 'Produk dengan ID tersebut tidak ditemukan.' })
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.productsService.remove(id);
   }

@@ -38,8 +38,8 @@ export class SubcategoriesService {
   create(dto: Pick<CreateSubcategoryDto, 'name' | 'categoryId'>, imageUrl?: string) {
     return this.prisma.subCategory.create({
       data: {
-        name: dto.name,
-        categoryId: Number(dto.categoryId),
+        name: dto.name as any,
+        categoryId: dto.categoryId as number,
         imageUrl,
       },
     });
@@ -69,7 +69,6 @@ export class SubcategoriesService {
     }
 
     if (oldImageUrl && (newImageUrl || deleteImage)) {
-      // [PERBAIKAN] Hapus '/' di awal path sebelum join
       const oldImagePath = join(process.cwd(), oldImageUrl.substring(1));
       if (fs.existsSync(oldImagePath)) {
         try {
@@ -90,7 +89,6 @@ export class SubcategoriesService {
     const subCategory = await this.findOne(id);
 
     if (subCategory.imageUrl) {
-      // [PERBAIKAN] Hapus '/' di awal path sebelum join
       const imagePath = join(process.cwd(), subCategory.imageUrl.substring(1));
       if (fs.existsSync(imagePath)) {
         try {

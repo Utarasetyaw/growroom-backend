@@ -5,17 +5,19 @@ export class UpdateSubcategoryDto {
   @ApiPropertyOptional({
     description: "Nama baru untuk sub-kategori dalam format JSON string. Cth: '{\"id\":\"Kaos\"}'",
     example: '{"id":"Kaos"}',
+    type: 'string', // Menegaskan tipe di Swagger
   })
   @IsOptional()
-  @IsString() // ✅ PERUBAHAN: Dari IsObject menjadi IsString
+  @IsString()
   name?: Record<string, string> | string;
 
   @ApiPropertyOptional({
     description: 'ID baru untuk kategori induk.',
     example: '2',
+    type: 'string', // Menegaskan tipe di Swagger
   })
   @IsOptional()
-  @IsNumberString() // ✅ PERUBAHAN: Dari IsInt menjadi IsNumberString
+  @IsNumberString()
   categoryId?: number | string;
 
   @ApiPropertyOptional({

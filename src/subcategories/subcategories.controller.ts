@@ -42,12 +42,18 @@ export class SubcategoriesController {
 
   @Get()
   @Roles(Role.OWNER)
+  @ApiOperation({ summary: 'Mendapatkan semua sub-kategori (Owner Only)' })
+  @ApiResponse({ status: 200, description: 'List semua sub-kategori berhasil diambil.', type: [SubcategoryResponseDto] })
   findAll() {
     return this.service.findAll();
   }
 
   @Get(':id')
   @Roles(Role.OWNER)
+  @ApiOperation({ summary: 'Mendapatkan detail satu sub-kategori (Owner Only)' })
+  @ApiParam({ name: 'id', description: 'ID unik dari sub-kategori', example: 1 })
+  @ApiResponse({ status: 200, description: 'Detail sub-kategori berhasil diambil.', type: SubcategoryResponseDto })
+  @ApiNotFoundResponse({ description: 'Sub-kategori dengan ID tersebut tidak ditemukan.' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.service.findOne(id);
   }
@@ -56,6 +62,8 @@ export class SubcategoriesController {
   @Roles(Role.OWNER)
   @ApiOperation({ summary: 'Membuat sub-kategori baru (Owner Only)' })
   @ApiConsumes('multipart/form-data')
+  @ApiResponse({ status: 201, description: 'Sub-kategori berhasil dibuat.', type: SubcategoryResponseDto })
+  @ApiResponse({ status: 400, description: 'Format data tidak valid.' })
   @UseInterceptors(
     FileInterceptor('image', {
       storage: diskStorage({
@@ -93,6 +101,9 @@ export class SubcategoriesController {
   @Roles(Role.OWNER)
   @ApiOperation({ summary: 'Update sub-kategori (Owner Only)' })
   @ApiConsumes('multipart/form-data')
+  @ApiParam({ name: 'id', description: 'ID dari sub-kategori yang akan di-update', example: 1 })
+  @ApiResponse({ status: 200, description: 'Sub-kategori berhasil diupdate.', type: SubcategoryResponseDto })
+  @ApiNotFoundResponse({ description: 'Sub-kategori dengan ID tersebut tidak ditemukan.' })
   @UseInterceptors(
     FileInterceptor('image', {
       storage: diskStorage({
@@ -141,6 +152,10 @@ export class SubcategoriesController {
 
   @Delete(':id')
   @Roles(Role.OWNER)
+  @ApiOperation({ summary: 'Menghapus sub-kategori (Owner Only)' })
+  @ApiParam({ name: 'id', description: 'ID dari sub-kategori yang akan dihapus', example: 1 })
+  @ApiResponse({ status: 200, description: 'Sub-kategori berhasil dihapus.' })
+  @ApiNotFoundResponse({ description: 'Sub-kategori dengan ID tersebut tidak ditemukan.' })
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.service.remove(id);
   }
