@@ -1,22 +1,22 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsObject, IsInt, IsBooleanString } from 'class-validator';
+import { IsOptional, IsString, IsNumberString, IsBooleanString } from 'class-validator';
 
 export class UpdateSubcategoryDto {
   @ApiPropertyOptional({
-    description: 'Nama baru untuk sub-kategori.',
-    example: { id: 'Kaos' },
+    description: "Nama baru untuk sub-kategori dalam format JSON string. Cth: '{\"id\":\"Kaos\"}'",
+    example: '{"id":"Kaos"}',
   })
   @IsOptional()
-  @IsObject()
-  name?: Record<string, string>;
+  @IsString() // ✅ PERUBAHAN: Dari IsObject menjadi IsString
+  name?: Record<string, string> | string;
 
   @ApiPropertyOptional({
     description: 'ID baru untuk kategori induk.',
-    example: 2,
+    example: '2',
   })
   @IsOptional()
-  @IsInt()
-  categoryId?: number;
+  @IsNumberString() // ✅ PERUBAHAN: Dari IsInt menjadi IsNumberString
+  categoryId?: number | string;
 
   @ApiPropertyOptional({
     type: 'string',

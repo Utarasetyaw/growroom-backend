@@ -52,7 +52,6 @@ export class SubcategoriesController {
     return this.service.findOne(id);
   }
 
-  // --- [PERBAIKAN] Metode Create ---
   @Post()
   @Roles(Role.OWNER)
   @ApiOperation({ summary: 'Membuat sub-kategori baru (Owner Only)' })
@@ -74,13 +73,11 @@ export class SubcategoriesController {
   ) {
     let parsedName: Record<string, string>;
     try {
-      // Mengubah `body.name` dari string JSON menjadi objek
       parsedName = JSON.parse(body.name as any);
     } catch (e) {
       throw new BadRequestException('Format "name" tidak valid. Harus berupa JSON string.');
     }
-
-    // Mengubah `body.categoryId` dari string menjadi number
+    
     const categoryId = parseInt(body.categoryId as any, 10);
     if (isNaN(categoryId)) {
       throw new BadRequestException('categoryId harus berupa angka.');
@@ -92,7 +89,6 @@ export class SubcategoriesController {
     return this.service.create(dto, imageUrl);
   }
 
-  // --- [PERBAIKAN] Metode Update ---
   @Patch(':id')
   @Roles(Role.OWNER)
   @ApiOperation({ summary: 'Update sub-kategori (Owner Only)' })

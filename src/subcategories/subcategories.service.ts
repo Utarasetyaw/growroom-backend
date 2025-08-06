@@ -35,10 +35,11 @@ export class SubcategoriesService {
     return data;
   }
 
-  create(dto: CreateSubcategoryDto, imageUrl?: string) {
+  create(dto: Pick<CreateSubcategoryDto, 'name' | 'categoryId'>, imageUrl?: string) {
     return this.prisma.subCategory.create({
       data: {
-        ...dto,
+        name: dto.name,
+        categoryId: Number(dto.categoryId),
         imageUrl,
       },
     });
@@ -46,15 +47,20 @@ export class SubcategoriesService {
 
   async update(
     id: number,
-    dto: UpdateSubcategoryDto,
+    dto: Partial<Pick<UpdateSubcategoryDto, 'name' | 'categoryId'>>,
     newImageUrl?: string,
     deleteImage?: boolean,
   ) {
     const subCategory = await this.findOne(id);
     const oldImageUrl = subCategory.imageUrl;
 
-    const { name, categoryId } = dto;
-    const dataToUpdate: any = { name, categoryId };
+    const dataToUpdate: any = {};
+    if (dto.name) {
+      dataToUpdate.name = dto.name;
+    }
+    if (dto.categoryId !== undefined) {
+      dataToUpdate.categoryId = dto.categoryId;
+    }
 
     if (deleteImage) {
       dataToUpdate.imageUrl = null;
@@ -62,9 +68,9 @@ export class SubcategoriesService {
       dataToUpdate.imageUrl = newImageUrl;
     }
 
-    // Hapus file lama dari server jika ada gambar baru atau jika ada permintaan hapus
     if (oldImageUrl && (newImageUrl || deleteImage)) {
-      const oldImagePath = join(process.cwd(), oldImageUrl);
+      // [PERBAIKAN] Hapus '/' di awal path sebelum join
+      const oldImagePath = join(process.cwd(), oldImageUrl.substring(1));
       if (fs.existsSync(oldImagePath)) {
         try {
           fs.unlinkSync(oldImagePath);
@@ -81,12 +87,11 @@ export class SubcategoriesService {
   }
 
   async remove(id: number) {
-    // Ambil data sub-kategori terlebih dahulu untuk mendapatkan path gambar
     const subCategory = await this.findOne(id);
 
-    // Hapus file gambar dari server jika ada
     if (subCategory.imageUrl) {
-      const imagePath = join(process.cwd(), subCategory.imageUrl);
+      // [PERBAIKAN] Hapus '/' di awal path sebelum join
+      const imagePath = join(process.cwd(), subCategory.imageUrl.substring(1));
       if (fs.existsSync(imagePath)) {
         try {
           fs.unlinkSync(imagePath);
@@ -96,7 +101,6 @@ export class SubcategoriesService {
       }
     }
 
-    // Setelah file dihapus, hapus record dari database
     return this.prisma.subCategory.delete({ where: { id } });
   }
 }
