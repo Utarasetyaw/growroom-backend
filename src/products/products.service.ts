@@ -44,12 +44,14 @@ export class ProductsService {
     const dataToCreate: Prisma.ProductCreateInput = {
       ...productData,
       images: {
-        create: imageUrls.map(url => ({ url })),
+        create: imageUrls.map((url) => ({ url })),
       },
     };
 
     if (prices && prices.length > 0) {
-      const validPrices = prices.filter(p => p.currencyId != null && p.price != null);
+      const validPrices = prices.filter(
+        (p) => p.currencyId != null && p.price != null,
+      );
       if (validPrices.length > 0) {
         dataToCreate.prices = {
           create: validPrices,
@@ -80,24 +82,21 @@ export class ProductsService {
       }
 
       if (imagesToDelete && imagesToDelete.length > 0) {
-        // 1. Ambil data gambar yang akan dihapus untuk mendapatkan URL-nya
         const imagesToDeleteRecords = await tx.productImage.findMany({
           where: { id: { in: imagesToDelete } },
         });
 
-        // 2. Hapus setiap file fisik dari server
         for (const image of imagesToDeleteRecords) {
-          const imagePath = join(process.cwd(), image.url.substring(1)); // Hapus '/' di awal
+          const imagePath = join(process.cwd(), image.url.substring(1));
           if (fs.existsSync(imagePath)) {
             try {
               fs.unlinkSync(imagePath);
             } catch (err) {
-              console.error(`Gagal menghapus file: ${imagePath}`, err);
+              console.error(`Failed to delete file: ${imagePath}`, err);
             }
           }
         }
-        
-        // 3. Hapus record gambar dari database
+
         await tx.productImage.deleteMany({
           where: { productId: id, id: { in: imagesToDelete } },
         });
@@ -105,17 +104,19 @@ export class ProductsService {
 
       if (newImageUrls && newImageUrls.length > 0) {
         await tx.productImage.createMany({
-          data: newImageUrls.map(url => ({ url, productId: id })),
+          data: newImageUrls.map((url) => ({ url, productId: id })),
         });
       }
 
       if (prices) {
         await tx.productPrice.deleteMany({ where: { productId: id } });
         if (prices.length > 0) {
-          const validPrices = prices.filter(p => p.currencyId != null && p.price != null);
+          const validPrices = prices.filter(
+            (p) => p.currencyId != null && p.price != null,
+          );
           if (validPrices.length > 0) {
             await tx.productPrice.createMany({
-              data: validPrices.map(price => ({
+              data: validPrices.map((price) => ({
                 productId: id,
                 currencyId: price.currencyId!,
                 price: price.price!,
@@ -135,28 +136,26 @@ export class ProductsService {
   async remove(id: number) {
     const product = await this.prisma.product.findUnique({
       where: { id },
-      include: { images: true }, // Ambil data gambar terkait
+      include: { images: true },
     });
 
     if (!product) {
       throw new NotFoundException(`Product with ID ${id} not found.`);
     }
 
-    // Hapus semua file gambar fisik dari produk ini
     if (product.images && product.images.length > 0) {
       for (const image of product.images) {
-        const imagePath = join(process.cwd(), image.url.substring(1)); // Hapus '/' di awal
+        const imagePath = join(process.cwd(), image.url.substring(1));
         if (fs.existsSync(imagePath)) {
           try {
             fs.unlinkSync(imagePath);
           } catch (err) {
-            console.error(`Gagal menghapus file produk: ${imagePath}`, err);
+            console.error(`Failed to delete product file: ${imagePath}`, err);
           }
         }
       }
     }
 
-    // Setelah file fisik dihapus, hapus record produk dari database
     return this.prisma.product.delete({ where: { id } });
   }
 
@@ -172,7 +171,17 @@ export class ProductsService {
   }
 
   async findPaginated(query: GetProductsQueryDto) {
-    const { page = 1, limit = 12, categoryId, subCategoryId, search, variant, availability, minPrice, maxPrice } = query;
+    const {
+      page = 1,
+      limit = 12,
+      categoryId,
+      subCategoryId,
+      search,
+      variant,
+      availability,
+      minPrice,
+      maxPrice,
+    } = query;
     const skip = (page - 1) * limit;
 
     const where: Prisma.ProductWhereInput = {

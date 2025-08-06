@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Patch, Param, Body, ParseIntPipe, UseGuards, Req, Res } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth, ApiBody, ApiNotFoundResponse, ApiForbiddenResponse } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth, ApiNotFoundResponse, ApiForbiddenResponse } from '@nestjs/swagger';
 import { OrdersService } from './orders.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -49,7 +49,7 @@ export class OrdersController {
   @ApiParam({ name: 'id', description: 'ID dari order' })
   @ApiResponse({ status: 200, type: OrderResponseDto })
   @ApiNotFoundResponse({ description: 'Order tidak ditemukan.' })
-  @ApiForbiddenResponse({ description: 'Akses ditolak (jika user mencoba melihat order orang lain).' })
+  @ApiForbiddenResponse({ description: 'Akses ditolak.' })
   findOne(@Req() req: RequestWithUser, @Param('id', ParseIntPipe) id: number) {
     return this.service.findOne(id, req.user.role === Role.USER ? req.user.userId : undefined);
   }
