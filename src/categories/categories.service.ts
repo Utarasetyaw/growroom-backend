@@ -35,10 +35,10 @@ export class CategoriesService {
     return data;
   }
 
-  create(dto: CreateCategoryDto, imageUrl?: string) {
+  create(dto: Pick<CreateCategoryDto, 'name'>, imageUrl?: string) {
     return this.prisma.category.create({
       data: {
-        ...dto,
+        name: dto.name, // Pastikan hanya 'name' yang diambil
         imageUrl,
       },
     });
@@ -46,14 +46,17 @@ export class CategoriesService {
 
   async update(
     id: number,
-    dto: UpdateCategoryDto,
+    dto: Pick<UpdateCategoryDto, 'name'>,
     newImageUrl?: string,
     deleteImage?: boolean,
   ) {
     const category = await this.findOne(id);
     const oldImageUrl = category.imageUrl;
 
-    const dataToUpdate: any = { name: dto.name };
+    const dataToUpdate: any = {};
+    if (dto.name) {
+        dataToUpdate.name = dto.name;
+    }
 
     if (deleteImage) {
       dataToUpdate.imageUrl = null;
@@ -61,9 +64,9 @@ export class CategoriesService {
       dataToUpdate.imageUrl = newImageUrl;
     }
 
-    // Hapus file lama dari server jika ada gambar baru atau jika ada permintaan hapus
     if (oldImageUrl && (newImageUrl || deleteImage)) {
-      const oldImagePath = join(process.cwd(), oldImageUrl);
+      // [PERBAIKAN] Hapus '/' di awal path sebelum join
+      const oldImagePath = join(process.cwd(), oldImageUrl.substring(1));
       if (fs.existsSync(oldImagePath)) {
         try {
           fs.unlinkSync(oldImagePath);
@@ -80,12 +83,11 @@ export class CategoriesService {
   }
 
   async remove(id: number) {
-    // Ambil data kategori terlebih dahulu untuk mendapatkan path gambar
     const category = await this.findOne(id);
 
-    // Hapus file gambar dari server jika ada
     if (category.imageUrl) {
-      const imagePath = join(process.cwd(), category.imageUrl);
+      // [PERBAIKAN] Hapus '/' di awal path sebelum join
+      const imagePath = join(process.cwd(), category.imageUrl.substring(1));
       if (fs.existsSync(imagePath)) {
         try {
           fs.unlinkSync(imagePath);
@@ -95,7 +97,6 @@ export class CategoriesService {
       }
     }
 
-    // Setelah file dihapus, hapus record dari database
     return this.prisma.category.delete({ where: { id } });
   }
 }

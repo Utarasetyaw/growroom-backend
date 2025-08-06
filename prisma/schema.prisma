@@ -254,20 +254,24 @@ model ChatMessage {
 }
 
 model GeneralSetting {
-  id              Int      @id @default(1)
-  shopName        Json?   // Multilang: { "id": "...", "en": "...", ... }
-  shopDescription Json?   // Multilang
-  logoUrl         String?
-  faviconUrl      String?
-  bannerImageUrl  String?
-  bannerVideoUrl  String?
-  address         String?  @db.Text
-  socialMedia     Json     @default("{}")
-  telegramBotToken  String? 
-  telegramChatId    String? 
-  shippingMode      String   @default("manual") // "manual" or "auto"
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @default(now())
+  id               Int      @id @default(1)
+  shopName         Json?    // Multilang: { "id": "...", "en": "...", ... }
+  shopDescription  Json?    // Multilang
+  logoUrl          String?
+  faviconUrl       String?
+  bannerImageUrl   String?
+  bannerVideoUrl   String?
+  address          String?  @db.Text
+  email            String?  // [BARU]
+  phoneNumber      String?  // [BARU]
+  socialMedia      Json     @default("{}")
+  aboutItems       Json?    @default("[]") // [BARU] Untuk Visi, Misi, Nilai
+  faqs             Json?    @default("[]") // [BARU] Untuk FAQ
+  telegramBotToken String?
+  telegramChatId   String?
+  shippingMode     String   @default("manual") // "manual" or "auto"
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt // ✅ Koreksi: Gunakan @updatedAt untuk pembaruan otomatis
 }
 
 model Cart {

@@ -13,7 +13,7 @@ import { GeneralsettingService } from './generalsetting.service';
 import { extname } from 'path';
 import { UpdateGeneralsettingDto } from './dto/update-generalsetting.dto';
 import { GeneralSettingResponseDto } from './dto/general-setting-response.dto';
-import { UpdateShippingModeDto } from './dto/update-shipping-mode.dto'; // Impor DTO baru
+import { UpdateShippingModeDto } from './dto/update-shipping-mode.dto';
 
 @ApiTags('General Settings')
 @ApiBearerAuth()
@@ -27,7 +27,7 @@ export class GeneralsettingController {
   @ApiOperation({ summary: 'Mendapatkan semua pengaturan umum (Owner Only)' })
   @ApiResponse({ status: 200, type: GeneralSettingResponseDto })
   find() {
-    return this.service.findOne(); // ✅ Revisi: Sesuaikan nama metode
+    return this.service.findOne();
   }
 
   @Patch()
@@ -35,7 +35,7 @@ export class GeneralsettingController {
   @ApiOperation({ summary: 'Update pengaturan umum (termasuk upload file) (Owner Only)' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
-    description: 'Data pengaturan yang akan diupdate. Field kompleks seperti shopName harus dalam format JSON string.',
+    description: 'Data pengaturan yang akan diupdate. Field kompleks seperti shopName, faqs, dll, harus dalam format JSON string.',
     type: UpdateGeneralsettingDto,
   })
   @ApiResponse({ status: 200, description: 'Pengaturan berhasil diupdate.', type: GeneralSettingResponseDto })
@@ -65,17 +65,20 @@ export class GeneralsettingController {
 
     const data = { ...body, ...fileMap };
 
-    ['shopName', 'shopDescription', 'socialMedia'].forEach(field => {
+    // ✅ REVISI DI SINI: Tambahkan 'aboutItems' dan 'faqs' ke dalam array.
+    ['shopName', 'shopDescription', 'socialMedia', 'aboutItems', 'faqs'].forEach(field => {
       if (typeof data[field] === 'string') {
-        try { data[field] = JSON.parse(data[field]); }
-        catch { throw new BadRequestException(`Invalid JSON at ${field}`); }
+        try { 
+          data[field] = JSON.parse(data[field]); 
+        } catch { 
+          throw new BadRequestException(`Format JSON tidak valid pada field: ${field}`); 
+        }
       }
     });
 
     return this.service.update(data);
   }
 
-  // ✅ TAMBAHKAN ENDPOINT BARU INI
   @Patch('shipping-mode')
   @Roles(Role.OWNER)
   @ApiOperation({ summary: 'Update mode kalkulasi pengiriman (Owner Only)' })

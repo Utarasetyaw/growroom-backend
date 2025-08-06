@@ -22,8 +22,8 @@ import {
   ApiNotFoundResponse,
   ApiConsumes,
 } from '@nestjs/swagger';
-import { diskStorage } from 'multer'; // [BARU] Impor langsung
-import { extname } from 'path'; // [BARU] Impor langsung
+import { diskStorage } from 'multer';
+import { extname } from 'path';
 import { CategoriesService } from './categories.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -40,15 +40,9 @@ import { CategoryResponseDto } from './dto/category-response.dto';
 export class CategoriesController {
   constructor(private readonly service: CategoriesService) {}
 
-  // Metode findAll() dan findOne() tidak berubah...
   @Get()
   @Roles(Role.OWNER)
   @ApiOperation({ summary: 'Dapatkan semua kategori (OWNER only)' })
-  @ApiResponse({
-    status: 200,
-    description: 'List semua kategori.',
-    type: [CategoryResponseDto],
-  })
   findAll() {
     return this.service.findAll();
   }
@@ -56,48 +50,45 @@ export class CategoriesController {
   @Get(':id')
   @Roles(Role.OWNER)
   @ApiOperation({ summary: 'Dapatkan detail satu kategori (OWNER only)' })
-  @ApiParam({ name: 'id', description: 'ID dari kategori' })
-  @ApiResponse({
-    status: 200,
-    description: 'Detail kategori.',
-    type: CategoryResponseDto,
-  })
-  @ApiNotFoundResponse({ description: 'Kategori tidak ditemukan.' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.service.findOne(id);
   }
 
+  // --- [PERBAIKAN] Metode Create ---
   @Post()
   @Roles(Role.OWNER)
-  @ApiOperation({ summary: 'Buat kategori baru (OWNER only)' })
+  @ApiOperation({ summary: 'Buat kategori baru (Owner Only)' })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(
     FileInterceptor('image', {
       storage: diskStorage({
         destination: './uploads/categories',
         filename: (req, file, cb) => {
-          const randomName = Array(32)
-            .fill(null)
-            .map(() => Math.round(Math.random() * 16).toString(16))
-            .join('');
+          const randomName = Array(32).fill(null).map(() => Math.round(Math.random() * 16).toString(16)).join('');
           cb(null, `${randomName}${extname(file.originalname)}`);
         },
       }),
     }),
   )
-  @ApiResponse({
-    status: 201,
-    description: 'Kategori berhasil dibuat.',
-    type: CategoryResponseDto,
-  })
   create(
-    @Body() dto: CreateCategoryDto,
+    @Body() body: CreateCategoryDto,
     @UploadedFile() file?: Express.Multer.File,
   ) {
+    let parsedName: Record<string, string>;
+    try {
+      // Mengubah `body.name` dari string JSON menjadi objek
+      parsedName = JSON.parse(body.name as any);
+    } catch (e) {
+      throw new BadRequestException('Format "name" tidak valid. Harus berupa JSON string.');
+    }
+
+    const dto = { name: parsedName };
     const imageUrl = file ? `/uploads/categories/${file.filename}` : undefined;
+    
     return this.service.create(dto, imageUrl);
   }
 
+  // --- [PERBAIKAN] Metode Update ---
   @Patch(':id')
   @Roles(Role.OWNER)
   @ApiOperation({ summary: 'Update kategori (OWNER only)' })
@@ -107,29 +98,30 @@ export class CategoriesController {
       storage: diskStorage({
         destination: './uploads/categories',
         filename: (req, file, cb) => {
-          const randomName = Array(32)
-            .fill(null)
-            .map(() => Math.round(Math.random() * 16).toString(16))
-            .join('');
+          const randomName = Array(32).fill(null).map(() => Math.round(Math.random() * 16).toString(16)).join('');
           cb(null, `${randomName}${extname(file.originalname)}`);
         },
       }),
     }),
   )
-  @ApiParam({ name: 'id', description: 'ID dari kategori yang akan di-update' })
-  @ApiResponse({
-    status: 200,
-    description: 'Kategori berhasil di-update.',
-    type: CategoryResponseDto,
-  })
-  @ApiNotFoundResponse({ description: 'Kategori tidak ditemukan.' })
   update(
     @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateCategoryDto,
+    @Body() body: UpdateCategoryDto,
     @UploadedFile() file?: Express.Multer.File,
   ) {
+    const dataToUpdate: any = {};
+    
+    // Mengubah `body.name` dari string JSON menjadi objek jika ada
+    if (body.name) {
+      try {
+        dataToUpdate.name = JSON.parse(body.name as any);
+      } catch (e) {
+        throw new BadRequestException('Format "name" tidak valid. Harus berupa JSON string.');
+      }
+    }
+
     const newImageUrl = file ? `/uploads/categories/${file.filename}` : undefined;
-    const deleteImageFlag = dto.deleteImage === 'true';
+    const deleteImageFlag = body.deleteImage === 'true';
 
     if (newImageUrl && deleteImageFlag) {
       throw new BadRequestException(
@@ -137,16 +129,12 @@ export class CategoriesController {
       );
     }
 
-    return this.service.update(id, dto, newImageUrl, deleteImageFlag);
+    return this.service.update(id, dataToUpdate, newImageUrl, deleteImageFlag);
   }
 
-  // Metode remove() tidak berubah...
   @Delete(':id')
   @Roles(Role.OWNER)
   @ApiOperation({ summary: 'Hapus kategori (OWNER only)' })
-  @ApiParam({ name: 'id', description: 'ID dari kategori yang akan dihapus' })
-  @ApiResponse({ status: 200, description: 'Kategori berhasil dihapus.' })
-  @ApiNotFoundResponse({ description: 'Kategori tidak ditemukan.' })
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.service.remove(id);
   }

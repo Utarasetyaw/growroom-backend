@@ -1,14 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNotEmpty, IsObject, IsOptional } from 'class-validator';
+import { IsNotEmpty, IsString, IsOptional } from 'class-validator';
 
 export class CreateCategoryDto {
   @ApiProperty({
-    description: 'Nama kategori dalam berbagai bahasa. Kunci adalah kode bahasa (id, en, dll).',
-    example: { id: 'Pakaian Pria', en: "Men's Wear" },
+    description: "Nama kategori dalam format JSON string. Cth: '{\"id\":\"Pakaian Pria\",\"en\":\"Men's Wear\"}'",
+    example: '{"id":"Pakaian Pria","en":"Men\'s Wear"}',
   })
   @IsNotEmpty()
-  @IsObject()
-  name: Record<string, string>;
+  @IsString() // ✅ PERUBAHAN: Diubah dari IsObject menjadi IsString
+  name: Record<string, string> | string; // Tipe diubah untuk fleksibilitas
 
   @ApiPropertyOptional({
     type: 'string',

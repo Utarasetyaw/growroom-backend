@@ -13,17 +13,56 @@ export class UpdateGeneralsettingDto {
   @ApiPropertyOptional({ type: 'string', format: 'binary', description: 'File video untuk banner baru.' })
   bannerVideoUrl?: any;
 
-  @ApiPropertyOptional({ type: 'string', description: 'Nama toko dalam format JSON string. Cth: \'{"id":"Toko Baru"}\'' })
+  @ApiPropertyOptional({ 
+    type: 'string', 
+    description: 'Nama toko dalam format JSON string. Cth: \'{"id":"Toko Baru","en":"New Store"}\'' 
+  })
   shopName?: string;
 
-  @ApiPropertyOptional({ type: 'string', description: 'Deskripsi toko dalam format JSON string.' })
+  @ApiPropertyOptional({ 
+    type: 'string', 
+    description: 'Deskripsi toko dalam format JSON string.' 
+  })
   shopDescription?: string;
 
-  @ApiPropertyOptional({ type: 'string' })
+  @ApiPropertyOptional({ 
+    type: 'string', 
+    description: 'Alamat lengkap toko.' 
+  })
   address?: string;
 
-  @ApiPropertyOptional({ type: 'string', description: 'Media sosial dalam format JSON string.' })
+  @ApiPropertyOptional({ 
+    type: 'string', 
+    description: 'Alamat email kontak.' 
+  })
+  email?: string;
+
+  @ApiPropertyOptional({ 
+    type: 'string', 
+    description: 'Nomor telepon kontak.' 
+  })
+  phoneNumber?: string;
+
+  @ApiPropertyOptional({
+    type: 'string',
+    description: 'Media sosial dalam format JSON string.',
+    example: '{"instagram":"https://...","facebook":"https://...","tiktok":"https://...","youtube":"https://...","telegram":"https://..."}',
+  })
   socialMedia?: string;
+
+  @ApiPropertyOptional({
+    type: 'string',
+    description: 'Array Visi, Misi, Nilai dalam format JSON string.',
+    example: '[{"title":{"id":"Visi"},"description":{"id":"Menjadi..."}}]',
+  })
+  aboutItems?: string;
+
+  @ApiPropertyOptional({
+    type: 'string',
+    description: 'Array FAQ dalam format JSON string.',
+    example: '[{"question":{"id":"Apa itu?"},"answer":{"id":"Ini adalah..."}}]',
+  })
+  faqs?: string;
 
   @ApiPropertyOptional({ type: 'string' })
   telegramBotToken?: string;

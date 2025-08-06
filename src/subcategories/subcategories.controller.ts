@@ -40,25 +40,19 @@ import { SubcategoryResponseDto } from './dto/subcategory-response.dto';
 export class SubcategoriesController {
   constructor(private readonly service: SubcategoriesService) {}
 
-  // Metode findAll() dan findOne() tidak berubah...
   @Get()
   @Roles(Role.OWNER)
-  @ApiOperation({ summary: 'Mendapatkan semua sub-kategori (Owner Only)' })
-  @ApiResponse({ status: 200, type: [SubcategoryResponseDto] })
   findAll() {
     return this.service.findAll();
   }
 
   @Get(':id')
   @Roles(Role.OWNER)
-  @ApiOperation({ summary: 'Mendapatkan detail satu sub-kategori (Owner Only)' })
-  @ApiParam({ name: 'id', description: 'ID dari sub-kategori' })
-  @ApiResponse({ status: 200, type: SubcategoryResponseDto })
-  @ApiNotFoundResponse({ description: 'Sub-kategori tidak ditemukan.' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.service.findOne(id);
   }
 
+  // --- [PERBAIKAN] Metode Create ---
   @Post()
   @Roles(Role.OWNER)
   @ApiOperation({ summary: 'Membuat sub-kategori baru (Owner Only)' })
@@ -68,24 +62,37 @@ export class SubcategoriesController {
       storage: diskStorage({
         destination: './uploads/subcategories',
         filename: (req, file, cb) => {
-          const randomName = Array(32)
-            .fill(null)
-            .map(() => Math.round(Math.random() * 16).toString(16))
-            .join('');
+          const randomName = Array(32).fill(null).map(() => Math.round(Math.random() * 16).toString(16)).join('');
           cb(null, `${randomName}${extname(file.originalname)}`);
         },
       }),
     }),
   )
-  @ApiResponse({ status: 201, type: SubcategoryResponseDto })
   create(
-    @Body() dto: CreateSubcategoryDto,
+    @Body() body: CreateSubcategoryDto,
     @UploadedFile() file?: Express.Multer.File,
   ) {
+    let parsedName: Record<string, string>;
+    try {
+      // Mengubah `body.name` dari string JSON menjadi objek
+      parsedName = JSON.parse(body.name as any);
+    } catch (e) {
+      throw new BadRequestException('Format "name" tidak valid. Harus berupa JSON string.');
+    }
+
+    // Mengubah `body.categoryId` dari string menjadi number
+    const categoryId = parseInt(body.categoryId as any, 10);
+    if (isNaN(categoryId)) {
+      throw new BadRequestException('categoryId harus berupa angka.');
+    }
+
+    const dto = { name: parsedName, categoryId };
     const imageUrl = file ? `/uploads/subcategories/${file.filename}` : undefined;
+
     return this.service.create(dto, imageUrl);
   }
 
+  // --- [PERBAIKAN] Metode Update ---
   @Patch(':id')
   @Roles(Role.OWNER)
   @ApiOperation({ summary: 'Update sub-kategori (Owner Only)' })
@@ -95,27 +102,37 @@ export class SubcategoriesController {
       storage: diskStorage({
         destination: './uploads/subcategories',
         filename: (req, file, cb) => {
-          const randomName = Array(32)
-            .fill(null)
-            .map(() => Math.round(Math.random() * 16).toString(16))
-            .join('');
+          const randomName = Array(32).fill(null).map(() => Math.round(Math.random() * 16).toString(16)).join('');
           cb(null, `${randomName}${extname(file.originalname)}`);
         },
       }),
     }),
   )
-  @ApiParam({ name: 'id', description: 'ID dari sub-kategori' })
-  @ApiResponse({ status: 200, type: SubcategoryResponseDto })
-  @ApiNotFoundResponse({ description: 'Sub-kategori tidak ditemukan.' })
   update(
     @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateSubcategoryDto,
+    @Body() body: UpdateSubcategoryDto,
     @UploadedFile() file?: Express.Multer.File,
   ) {
-    const newImageUrl = file
-      ? `/uploads/subcategories/${file.filename}`
-      : undefined;
-    const deleteImageFlag = dto.deleteImage === 'true';
+    const dataToUpdate: any = {};
+
+    if (body.name) {
+      try {
+        dataToUpdate.name = JSON.parse(body.name as any);
+      } catch (e) {
+        throw new BadRequestException('Format "name" tidak valid. Harus berupa JSON string.');
+      }
+    }
+    
+    if (body.categoryId) {
+      const categoryId = parseInt(body.categoryId as any, 10);
+      if (isNaN(categoryId)) {
+        throw new BadRequestException('categoryId harus berupa angka.');
+      }
+      dataToUpdate.categoryId = categoryId;
+    }
+
+    const newImageUrl = file ? `/uploads/subcategories/${file.filename}` : undefined;
+    const deleteImageFlag = body.deleteImage === 'true';
 
     if (newImageUrl && deleteImageFlag) {
       throw new BadRequestException(
@@ -123,16 +140,11 @@ export class SubcategoriesController {
       );
     }
 
-    return this.service.update(id, dto, newImageUrl, deleteImageFlag);
+    return this.service.update(id, dataToUpdate, newImageUrl, deleteImageFlag);
   }
 
-  // Metode remove() tidak berubah...
   @Delete(':id')
   @Roles(Role.OWNER)
-  @ApiOperation({ summary: 'Menghapus sub-kategori (Owner Only)' })
-  @ApiParam({ name: 'id', description: 'ID dari sub-kategori' })
-  @ApiResponse({ status: 200, description: 'Berhasil dihapus.' })
-  @ApiNotFoundResponse({ description: 'Sub-kategori tidak ditemukan.' })
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.service.remove(id);
   }

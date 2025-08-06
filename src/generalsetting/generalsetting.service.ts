@@ -19,6 +19,8 @@ export class GeneralsettingService {
    * Mengupdate data pengaturan umum dari panel admin.
    */
   async update(data: any) {
+    // Metode ini sudah generik dan tidak perlu diubah.
+    // Secara otomatis akan menangani semua field baru.
     return this.prisma.generalSetting.update({
       where: { id: 1 },
       data,
@@ -65,6 +67,8 @@ export class GeneralsettingService {
         logoUrl: true,
         faviconUrl: true,
         address: true,
+        email: true,         // [DITAMBAHKAN]
+        phoneNumber: true,   // [DITAMBAHKAN]
         socialMedia: true,
       },
     });
