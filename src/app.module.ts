@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config'; // 👈 1. Impor ConfigModule
+import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule'; // 👈 Tambahkan impor ini
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -27,10 +28,10 @@ import { CartModule } from './cart/cart.module';
 
 @Module({
   imports: [
-    // 👇 2. Daftarkan di sini, di bagian paling atas
     ConfigModule.forRoot({
-      isGlobal: true, // Membuat ConfigService tersedia di semua modul
+      isGlobal: true,
     }),
+    ScheduleModule.forRoot(), // 👈 Daftarkan di sini
     PrismaModule, 
     UsersModule, 
     AuthModule, 

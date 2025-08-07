@@ -1,5 +1,7 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, IsNumber, IsArray, IsInt, Min, ValidateNested } from 'class-validator';
+// File: src/orders/dto/create-order.dto.ts
+
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsNotEmpty, IsString, IsNumber, IsArray, IsInt, Min, ValidateNested, IsOptional } from 'class-validator';
 import { Type } from 'class-transformer';
 
 class CreateOrderItemDto {
@@ -7,9 +9,11 @@ class CreateOrderItemDto {
   @IsInt()
   productId: number;
 
-  @ApiProperty({ description: 'Harga produk saat pemesanan.', example: 150000 })
-  @IsNumber()
-  price: number;
+  // --- DIHAPUS ---
+  // Harga akan diambil dari database di backend untuk mencegah manipulasi.
+  // @ApiProperty({ description: 'Harga produk saat pemesanan.', example: 150000 })
+  // @IsNumber()
+  // price: number;
 
   @ApiProperty({ description: 'Jumlah kuantitas produk.', example: 2 })
   @IsInt()
@@ -23,17 +27,19 @@ export class CreateOrderDto {
   @IsString()
   address: string;
 
-  @ApiProperty({ description: 'Biaya pengiriman.', example: 15000 })
-  @IsNumber()
-  shippingCost: number;
+  // --- DIHAPUS ---
+  // Semua nilai ini akan dihitung ulang di backend.
+  // @ApiProperty({ description: 'Biaya pengiriman.', example: 15000 })
+  // @IsNumber()
+  // shippingCost: number;
 
-  @ApiProperty({ description: 'Subtotal harga semua barang.', example: 300000 })
-  @IsNumber()
-  subtotal: number;
+  // @ApiProperty({ description: 'Subtotal harga semua barang.', example: 300000 })
+  // @IsNumber()
+  // subtotal: number;
 
-  @ApiProperty({ description: 'Total harga (subtotal + ongkir).', example: 315000 })
-  @IsNumber()
-  total: number;
+  // @ApiProperty({ description: 'Total harga (subtotal + ongkir).', example: 315000 })
+  // @IsNumber()
+  // total: number;
 
   @ApiProperty({ description: 'ID dari metode pembayaran yang dipilih.', example: 1 })
   @IsInt()
@@ -44,4 +50,16 @@ export class CreateOrderDto {
   @ValidateNested({ each: true })
   @Type(() => CreateOrderItemDto)
   orderItems: CreateOrderItemDto[];
+
+  // --- DITAMBAHKAN ---
+  @ApiProperty({ description: 'Kode mata uang yang digunakan saat checkout (e.g., "IDR", "USD").', example: 'IDR' })
+  @IsString()
+  @IsNotEmpty()
+  currencyCode: string;
+
+  // --- DITAMBAHKAN ---
+  @ApiPropertyOptional({ description: 'ID dari tarif pengiriman (kota) yang dipilih. Diperlukan jika pengiriman tidak gratis.', example: 5 })
+  @IsInt()
+  @IsOptional()
+  shippingRateId?: number;
 }

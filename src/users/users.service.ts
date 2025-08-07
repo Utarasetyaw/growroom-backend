@@ -107,7 +107,6 @@ export class UsersService {
       // Pilih field yang akan dikembalikan, pastikan tidak ada password
       select: {
         id: true, email: true, name: true, phone: true, address: true,
-        city: true, province: true, country: true, postalCode: true,
         socialMedia: true, updatedAt: true,
       },
     });

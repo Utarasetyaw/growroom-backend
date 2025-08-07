@@ -7,19 +7,18 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ... Enum tidak berubah ...
 enum Role {
   OWNER
   ADMIN
   USER
 }
-
 enum PaymentStatus {
   PENDING
   PAID
   CANCELLED
   REFUND
 }
-
 enum OrderStatus {
   PROCESSING
   SHIPPING
@@ -27,6 +26,7 @@ enum OrderStatus {
   REFUND
   CANCELLED
 }
+
 
 model User {
   id                    Int            @id @default(autoincrement())
@@ -36,14 +36,10 @@ model User {
   role                  Role           @default(USER)
   permissions           String[]
   phone                 String?
-  address               String?
-  city                  String?
-  province              String?
-  country               String?
-  postalCode            String?
+  address               Json?          @default("{}")
   socialMedia           Json           @default("{}")
   createdAt             DateTime       @default(now())
-  updatedAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
   conversationsStarted  Conversation[] @relation("UserConversations")
   assignedConversations Conversation[] @relation("AdminAssignments")
   sentMessages          ChatMessage[]
@@ -58,18 +54,18 @@ model Language {
   isActive  Boolean  @default(true)
   isDefault Boolean  @default(false)
   createdAt DateTime @default(now())
-  updatedAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Currency {
-  id        Int      @id @default(autoincrement())
-  name      String
-  code      String   @unique
-  symbol    String
-  isActive  Boolean  @default(true)
-  isDefault Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now())
+  id                 Int                 @id @default(autoincrement())
+  name               String
+  code               String              @unique
+  symbol             String
+  isActive           Boolean             @default(true)
+  isDefault          Boolean             @default(false)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
   productPrices      ProductPrice[]
   shippingZonePrices ShippingZonePrice[]
   shippingRatePrices ShippingRatePrice[]
@@ -77,47 +73,50 @@ model Currency {
 
 model Category {
   id            Int           @id @default(autoincrement())
-  name          Json          // { "id": "...", "en": "...", ... }
-  imageUrl      String?       // [BARU] Tambahkan kolom ini
+  name          Json
+  imageUrl      String?
   subCategories SubCategory[]
 }
 
 model SubCategory {
   id         Int      @id @default(autoincrement())
-  name       Json     // Multilang
-  imageUrl   String?  // [BARU] Tambahkan kolom ini
+  name       Json
+  imageUrl   String?
   category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   categoryId Int
   products   Product[]
 
   @@unique([categoryId, name])
+  @@index([categoryId]) // --- REVISI SINTAKS: Indeks didefinisikan di sini ---
 }
 
 model Product {
   id            Int            @id @default(autoincrement())
-  name          Json           // Multilang
-  variant       Json           // Multilang
+  name          Json
+  variant       Json
   stock         Int            @default(0)
   weight        Float?
   careDetails   Json           @default("[]")
-  description   Json?          // Multilang
+  description   Json?
   isBestProduct Boolean        @default(false)
   isActive      Boolean        @default(true)
   createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
   images        ProductImage[]
   subCategory   SubCategory    @relation(fields: [subCategoryId], references: [id])
   subCategoryId Int
   orderItems    OrderItem[]
-  prices        ProductPrice[] // Multicurrency
+  prices        ProductPrice[]
   cartItems     CartItem[]
+
+  @@index([subCategoryId]) // --- REVISI SINTAKS: Indeks didefinisikan di sini ---
 }
 
 model ProductPrice {
   id         Int      @id @default(autoincrement())
   product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   productId  Int
-  currency   Currency @relation(fields: [currencyId], references: [id])
+  currency   Currency @relation(fields: [currencyId], references: [id], onDelete: Cascade)
   currencyId Int
   price      Float
   @@unique([productId, currencyId])
@@ -133,11 +132,11 @@ model ProductImage {
 model Testimonial {
   id        Int      @id @default(autoincrement())
   author    String
-  quote     Json     // Multilang
+  quote     Json
   rating    Int
   imageUrl  String?
   createdAt DateTime @default(now())
-  updatedAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model PaymentMethod {
@@ -147,7 +146,7 @@ model PaymentMethod {
   isActive  Boolean  @default(true)
   config    Json     @default("{}")
   createdAt DateTime @default(now())
-  updatedAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   orders    Order[]
 }
 
@@ -161,11 +160,16 @@ model Order {
   total           Float
   paymentStatus   PaymentStatus  @default(PENDING)
   orderStatus     OrderStatus    @default(PROCESSING)
-  paymentMethod   PaymentMethod? @relation(fields: [paymentMethodId], references: [id])
+  paymentMethod   PaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
   paymentMethodId Int?
   orderItems      OrderItem[]
   createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  paymentDueDate  DateTime?
+  trackingNumber  String?
+
+  @@index([userId]) // --- REVISI SINTAKS: Indeks didefinisikan di sini ---
+  @@index([paymentMethodId]) // --- REVISI SINTAKS: Indeks didefinisikan di sini ---
 }
 
 model OrderItem {
@@ -174,14 +178,15 @@ model OrderItem {
   orderId        Int
   product        Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
   productId      Int?
-
   productName    Json     @default("{}")
   productVariant Json     @default("{}")
   productImage   String?
-
   price          Float
   qty            Int
   subtotal       Float
+
+  @@index([orderId]) // --- REVISI SINTAKS: Indeks didefinisikan di sini ---
+  @@index([productId]) // --- REVISI SINTAKS: Indeks didefinisikan di sini ---
 }
 
 model ShippingProvider {
@@ -191,24 +196,24 @@ model ShippingProvider {
   isActive    Boolean  @default(false)
   credentials Json     @default("{}")
   createdAt   DateTime @default(now())
-  updatedAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model ShippingZone {
-  id        Int                  @id @default(autoincrement())
-  name      String               @unique
-  isActive  Boolean              @default(true)
-  prices    ShippingZonePrice[]  // multicurrency
+  id        Int                 @id @default(autoincrement())
+  name      String              @unique
+  isActive  Boolean             @default(true)
+  prices    ShippingZonePrice[]
   rates     ShippingRate[]
-  createdAt DateTime             @default(now())
-  updatedAt DateTime             @default(now())
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
 }
 
 model ShippingZonePrice {
   id             Int          @id @default(autoincrement())
   shippingZone   ShippingZone @relation(fields: [shippingZoneId], references: [id], onDelete: Cascade)
   shippingZoneId Int
-  currency       Currency     @relation(fields: [currencyId], references: [id])
+  currency       Currency     @relation(fields: [currencyId], references: [id], onDelete: Cascade)
   currencyId     Int
   price          Float
   @@unique([shippingZoneId, currencyId])
@@ -220,31 +225,33 @@ model ShippingRate {
   isActive  Boolean             @default(true)
   zone      ShippingZone        @relation(fields: [zoneId], references: [id], onDelete: Cascade)
   zoneId    Int
-  prices    ShippingRatePrice[] // multicurrency
+  prices    ShippingRatePrice[]
   createdAt DateTime            @default(now())
-  updatedAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  @@index([zoneId]) // --- REVISI SINTAKS: Indeks didefinisikan di sini ---
 }
 
 model ShippingRatePrice {
   id             Int          @id @default(autoincrement())
   shippingRate   ShippingRate @relation(fields: [shippingRateId], references: [id], onDelete: Cascade)
   shippingRateId Int
-  currency       Currency     @relation(fields: [currencyId], references: [id])
+  currency       Currency     @relation(fields: [currencyId], references: [id], onDelete: Cascade)
   currencyId     Int
   price          Float
   @@unique([shippingRateId, currencyId])
 }
 
 model Conversation {
-  id           Int          @id @default(autoincrement())
-  status       String       @default("OPEN")
-  user         User         @relation("UserConversations", fields: [userId], references: [id])
+  id           Int           @id @default(autoincrement())
+  status       String        @default("OPEN")
+  user         User          @relation("UserConversations", fields: [userId], references: [id])
   userId       Int
-  assignedTo   User?        @relation("AdminAssignments", fields: [assignedToId], references: [id])
+  assignedTo   User?         @relation("AdminAssignments", fields: [assignedToId], references: [id])
   assignedToId Int?
   messages     ChatMessage[]
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @default(now())
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 }
 
 model ChatMessage {
@@ -260,32 +267,32 @@ model ChatMessage {
 
 model GeneralSetting {
   id               Int      @id @default(1)
-  shopName         Json?    // Multilang: { "id": "...", "en": "...", ... }
-  shopDescription  Json?    // Multilang
+  shopName         Json?
+  shopDescription  Json?
   logoUrl          String?
   faviconUrl       String?
   bannerImageUrl   String?
   bannerVideoUrl   String?
   address          String?  @db.Text
-  email            String?  // [BARU]
-  phoneNumber      String?  // [BARU]
+  email            String?
+  phoneNumber      String?
   socialMedia      Json     @default("{}")
-  aboutItems       Json?    @default("[]") // [BARU] Untuk Visi, Misi, Nilai
-  faqs             Json?    @default("[]") // [BARU] Untuk FAQ
+  aboutItems       Json?    @default("[]")
+  faqs             Json?    @default("[]")
   telegramBotToken String?
   telegramChatId   String?
-  shippingMode     String   @default("manual") // "manual" or "auto"
+  shippingMode     String   @default("manual")
   createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt // ✅ Koreksi: Gunakan @updatedAt untuk pembaruan otomatis
+  updatedAt        DateTime @updatedAt
 }
 
 model Cart {
-  id        Int        @id @default(autoincrement())
-  user      User       @relation(fields: [userId], references: [id])
-  userId    Int        @unique // Setiap user hanya punya satu cart
+  id        Int      @id @default(autoincrement())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    Int      @unique
   items     CartItem[]
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model CartItem {
@@ -295,6 +302,8 @@ model CartItem {
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   productId Int
   quantity  Int
-  
-  @@unique([cartId, productId]) // Pastikan tidak ada produk duplikat dalam satu cart
+
+  @@unique([cartId, productId])
+  @@index([cartId])
+  @@index([productId])
 }
