@@ -96,10 +96,12 @@ export class OrdersService {
 
       // --- Perubahan #1: Kurangi stok produk di sini
       for (const item of orderItems) {
+        if (item.productId) { // Tambahkan pemeriksaan ini
           await tx.product.update({
               where: { id: item.productId },
               data: { stock: { decrement: item.qty } },
           });
+        }
       }
 
       const order = await tx.order.create({
@@ -229,18 +231,45 @@ export class OrdersService {
 
   async update(id: number, dto: UpdateOrderDto) {
     const { paymentStatus, orderStatus, trackingNumber } = dto;
-    const existingOrder = await this.prisma.order.findUnique({ where: { id } });
+    
+    // Fetch existing order with order items to check the old status and quantities
+    const existingOrder = await this.prisma.order.findUnique({ 
+        where: { id },
+        include: { orderItems: true } 
+    });
+
     if (!existingOrder) {
       throw new NotFoundException('Order not found');
     }
-    await this.prisma.order.update({
-      where: { id },
-      data: {
-        paymentStatus,
-        orderStatus,
-        trackingNumber,
-      },
+    
+    // Logika baru untuk mengembalikan stok hanya jika status berubah menjadi CANCELLED
+    const isStatusChangingToCancelled = existingOrder.orderStatus !== OrderStatus.CANCELLED && orderStatus === OrderStatus.CANCELLED;
+
+    // Gunakan transaction untuk memastikan pembaruan data atomik
+    await this.prisma.$transaction(async (tx) => {
+        // Perbarui status pesanan
+        await tx.order.update({
+            where: { id },
+            data: {
+                paymentStatus,
+                orderStatus,
+                trackingNumber,
+            },
+        });
+
+        // Jika status pesanan diubah menjadi CANCELLED, kembalikan stok produk
+        if (isStatusChangingToCancelled) {
+            for (const item of existingOrder.orderItems) {
+                if (item.productId) { // Tambahkan pemeriksaan ini
+                    await tx.product.update({
+                        where: { id: item.productId },
+                        data: { stock: { increment: item.qty } },
+                    });
+                }
+            }
+        }
     });
+
     return this.findOne(id);
   }
 
@@ -251,7 +280,6 @@ export class OrdersService {
     const orderId = parseInt(orderIdString, 10);
     if (isNaN(orderId)) throw new BadRequestException('Invalid order_id format in notification');
 
-    // Perubahan #2: Include orderItems untuk mengembalikan stok
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       include: { paymentMethod: true, orderItems: true },
@@ -286,10 +314,9 @@ export class OrdersService {
         newPaymentStatus = PaymentStatus.PAID;
     } else if (transactionStatus === 'cancel' || transactionStatus === 'deny' || transactionStatus === 'expire') {
         newPaymentStatus = PaymentStatus.CANCELLED;
-        // Perubahan #3: Kembalikan stok untuk order yang gagal/dibatalkan
         if (order.paymentStatus !== newPaymentStatus) {
             for (const item of order.orderItems) {
-                if (item.productId) {
+                if (item.productId) { // Tambahkan pemeriksaan ini
                     await this.prisma.product.update({
                         where: { id: item.productId },
                         data: { stock: { increment: item.qty } },
@@ -373,7 +400,6 @@ export class OrdersService {
     });
   }
   
-  // --- Metode untuk mencoba kembali pembayaran ---
   async retryPayment(orderId: number, userId: number) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId, userId },
@@ -430,7 +456,7 @@ export class OrdersService {
     throw new BadRequestException('Payment method is not supported for retry payment.');
   }
 
-  // --- Perubahan #4: Cron Job untuk menangani pesanan kedaluwarsa ---
+  // --- Cron Job untuk menangani pesanan kedaluwarsa ---
   @Cron(CronExpression.EVERY_HOUR)
   async handleExpiredOrders() {
       console.log('Running cron job to check for expired orders...');
@@ -453,7 +479,7 @@ export class OrdersService {
                           orderStatus: OrderStatus.CANCELLED,
                       },
                   });
-                  
+
                   for (const item of order.orderItems) {
                       if (item.productId) {
                           await tx.product.update({
