@@ -17,13 +17,16 @@ export class GeneralsettingService {
 
   /**
    * Mengupdate data pengaturan umum dari panel admin.
+   * Menggunakan upsert untuk menangani kasus jika data belum ada.
    */
   async update(data: any) {
-    // Metode ini sudah generik dan tidak perlu diubah.
-    // Secara otomatis akan menangani semua field baru.
-    return this.prisma.generalSetting.update({
-      where: { id: 1 },
-      data,
+    return this.prisma.generalSetting.upsert({
+      where: { id: 1 }, // Mencari data dengan ID 1
+      update: data,     // Data untuk diupdate jika record ditemukan
+      create: {         // Data untuk dibuat jika record tidak ditemukan
+        id: 1,
+        ...data,
+      },
     });
   }
 
@@ -31,9 +34,13 @@ export class GeneralsettingService {
    * Mengupdate mode pengiriman saja dari panel admin.
    */
   async updateShippingMode(dto: UpdateShippingModeDto) {
-    return this.prisma.generalSetting.update({
+    return this.prisma.generalSetting.upsert({
       where: { id: 1 },
-      data: {
+      update: {
+        shippingMode: dto.shippingMode,
+      },
+      create: {
+        id: 1,
         shippingMode: dto.shippingMode,
       },
     });
