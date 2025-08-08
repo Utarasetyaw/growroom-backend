@@ -452,6 +452,7 @@ export class OrdersService {
     }
 
     if (mappedOrder.paymentMethod && ['bank_transfer', 'wise'].includes(mappedOrder.paymentMethod.code)) {
+        // FIX: Corrected the variable from 'paymentMethod' to 'mappedOrder.paymentMethod'
         const configObject = (typeof mappedOrder.paymentMethod.config === 'object' && mappedOrder.paymentMethod.config !== null) ? mappedOrder.paymentMethod.config : {};
         const instructions = { ...configObject, amount: mappedOrder.total, paymentDueDate: mappedOrder.paymentDueDate };
         return { ...mappedOrder, paymentType: 'MANUAL', instructions };
