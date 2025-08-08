@@ -1,6 +1,6 @@
 // File: src/orders/orders.service.ts
 
-import { Injectable, BadRequestException, ForbiddenException, NotFoundException, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException, NotFoundException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
@@ -8,19 +8,20 @@ import { PaymentService } from '../payment/payment.service';
 import { CartService } from '../cart/cart.service';
 import { sendTelegramMessage } from '../utils/telegram.util';
 import * as PDFDocument from 'pdfkit';
-import { OrderStatus, PaymentStatus, Prisma } from '@prisma/client';
+import { OrderStatus, PaymentStatus, Prisma, User } from '@prisma/client';
 import * as crypto from 'crypto';
 import { Cron, CronExpression } from '@nestjs/schedule';
 
-const mapOrderToDto = (
-  order: Prisma.OrderGetPayload<{
-    include: {
-      user: true;
-      orderItems: { include: { product: true } };
-      paymentMethod: true;
-    };
-  }>,
-) => {
+// Tipe data untuk hasil query yang lebih spesifik
+type OrderWithDetails = Prisma.OrderGetPayload<{
+  include: {
+    user: true;
+    orderItems: { include: { product: true } };
+    paymentMethod: true;
+  };
+}>;
+
+const mapOrderToDto = (order: OrderWithDetails | null) => {
   if (!order) return null;
 
   return {
@@ -41,6 +42,8 @@ const mapOrderToDto = (
 
 @Injectable()
 export class OrdersService {
+  private readonly logger = new Logger(OrdersService.name);
+
   constructor(
     private prisma: PrismaService,
     private paymentService: PaymentService,
@@ -53,7 +56,9 @@ export class OrdersService {
       throw new BadRequestException('Order items cannot be empty.');
     }
 
+    // --- PROSES TRANSAKSI DATABASE ---
     const transactionResult = await this.prisma.$transaction(async (tx) => {
+      // (Logika validasi dan pembuatan order Anda tetap sama di sini...)
       const paymentMethod = await tx.paymentMethod.findUnique({ where: { id: paymentMethodId } });
       if (!paymentMethod || !paymentMethod.isActive) {
         throw new BadRequestException('Invalid or disabled payment method');
@@ -94,9 +99,8 @@ export class OrdersService {
       const paymentDueDate = new Date();
       paymentDueDate.setDate(paymentDueDate.getDate() + 2);
 
-      // --- Perubahan #1: Kurangi stok produk di sini
       for (const item of orderItems) {
-        if (item.productId) { // Tambahkan pemeriksaan ini
+        if (item.productId) {
           await tx.product.update({
               where: { id: item.productId },
               data: { stock: { decrement: item.qty } },
@@ -128,36 +132,17 @@ export class OrdersService {
     });
 
     const { order, paymentMethod } = transactionResult;
+    
+    // --- Panggil fungsi notifikasi setelah transaksi berhasil ---
+    this._sendTelegramNotification(order);
+    
+    // --- PROSES PEMBAYARAN ---
     const mappedOrder = mapOrderToDto(order);
-
     if (!mappedOrder || !mappedOrder.paymentMethod) {
       throw new InternalServerErrorException('Failed to map created order or its payment method.');
     }
     
-    const setting = await this.prisma.generalSetting.findUnique({ where: { id: 1 } });
-    if (setting?.telegramBotToken && setting?.telegramChatId) {
-      const totalFormatted = mappedOrder.total?.toLocaleString('id-ID', { style: 'currency', currency: currencyCode }) || mappedOrder.total;
-      const itemsText = mappedOrder.orderItems.map((item, idx) => {
-          const name = (item.product.name as any)?.id || (item.product.name as any)?.en || 'N/A';
-          return `${idx + 1}. ${name} x${item.qty} @${item.price.toLocaleString('id-ID')}`;
-      }).join('\n');
-      const text =
-          `🛒 *Order Baru #${mappedOrder.id}*\n` +
-          `👤 User: ${mappedOrder.user.name}\n` +
-          `🏠 Alamat: ${mappedOrder.address}\n` +
-          `📦 Barang:\n${itemsText}\n` +
-          `💰 Subtotal: ${mappedOrder.subtotal?.toLocaleString('id-ID')}\n` +
-          `🚚 Ongkir: ${mappedOrder.shippingCost?.toLocaleString('id-ID')}\n` +
-          `💸 Total: *${totalFormatted}*\n` +
-          `🔗 Metode: ${mappedOrder.paymentMethod?.name || '-'}\n` +
-          `[Admin Panel]`;
-      sendTelegramMessage(setting.telegramBotToken, setting.telegramChatId, text);
-    }
-    
     if (paymentMethod.code === 'midtrans') {
-      if (!mappedOrder.paymentMethod) {
-        throw new InternalServerErrorException('Payment method is missing from the order.');
-      }
       if (!paymentMethod.config || typeof paymentMethod.config !== 'object') {
         throw new InternalServerErrorException('Midtrans payment method config is missing or invalid.');
       }
@@ -165,10 +150,8 @@ export class OrdersService {
       const snap = await this.paymentService.createMidtransTransaction(orderWithPaymentMethod, paymentMethod.config as any);
       return { ...mappedOrder, paymentType: 'MIDTRANS', snapToken: snap.snapToken, redirectUrl: snap.redirectUrl };
     }
+    // (Sisa logika pembayaran Anda tetap sama...)
     if (paymentMethod.code === 'paypal') {
-        if (!mappedOrder.paymentMethod) {
-            throw new InternalServerErrorException('Payment method is missing from the order.');
-        }
         if (!paymentMethod.config || typeof paymentMethod.config !== 'object') {
             throw new InternalServerErrorException('PayPal payment method config is missing or invalid.');
         }
@@ -185,6 +168,58 @@ export class OrdersService {
     return mappedOrder;
   }
 
+  /**
+   * Mengirim notifikasi Telegram untuk pesanan baru.
+   */
+  private async _sendTelegramNotification(order: OrderWithDetails): Promise<void> {
+    this.logger.log(`[Telegram] Memulai proses notifikasi untuk Order #${order.id}...`);
+
+    const setting = await this.prisma.generalSetting.findUnique({ where: { id: 1 } });
+    if (!setting?.telegramBotToken || !setting?.telegramChatId) {
+      this.logger.error(`[Telegram] Proses dihentikan: Bot Token atau Chat ID tidak ditemukan.`);
+      return;
+    }
+
+    const totalFormatted = order.total.toLocaleString('id-ID', { style: 'currency', currency: 'IDR' });
+    const subtotalFormatted = order.subtotal.toLocaleString('id-ID', { style: 'currency', currency: 'IDR' });
+    const shippingFormatted = order.shippingCost.toLocaleString('id-ID', { style: 'currency', currency: 'IDR' });
+
+    const itemsText = order.orderItems.map((item, idx) => {
+        const name = (item.productName as any)?.id || (item.productName as any)?.en || 'N/A';
+        const price = item.price.toLocaleString('id-ID');
+        return `${idx + 1}. ${name} (x${item.qty}) - @${price}`;
+    }).join('\n');
+
+    const dashboardUrl = `${process.env.DASHBOARD_URL || 'http://localhost:3000'}/orders/${order.id}`;
+
+    const text = `
+🛒 *Pesanan Baru Diterima: #${order.id}*
+
+*Pelanggan:*
+- *Nama:* ${order.user.name}
+- *Email:* \`${order.user.email}\`
+- *Alamat:* ${order.address}
+
+*Detail Pesanan:*
+${itemsText}
+
+*Rincian Biaya:*
+- *Subtotal:* ${subtotalFormatted}
+- *Ongkir:* ${shippingFormatted}
+- *Total:* *${totalFormatted}*
+
+*Pembayaran:*
+- *Metode:* ${order.paymentMethod?.name || 'N/A'}
+- *Status:* ${order.paymentStatus}
+
+[Lihat Detail di Dashboard](${dashboardUrl})
+    `;
+
+    this.logger.log(`[Telegram] Mengirim notifikasi untuk Order #${order.id}...`);
+    sendTelegramMessage(setting.telegramBotToken, setting.telegramChatId, text);
+  }
+
+  // --- Sisa metode lainnya (findAll, findOne, update, dll.) tetap sama ---
   async findAll(options: { page: number; limit: number }) {
     const { page, limit } = options;
     const skip = (page - 1) * limit;
@@ -232,7 +267,6 @@ export class OrdersService {
   async update(id: number, dto: UpdateOrderDto) {
     const { paymentStatus, orderStatus, trackingNumber } = dto;
     
-    // Fetch existing order with order items to check the old status and quantities
     const existingOrder = await this.prisma.order.findUnique({ 
         where: { id },
         include: { orderItems: true } 
@@ -242,12 +276,9 @@ export class OrdersService {
       throw new NotFoundException('Order not found');
     }
     
-    // Logika baru untuk mengembalikan stok hanya jika status berubah menjadi CANCELLED
     const isStatusChangingToCancelled = existingOrder.orderStatus !== OrderStatus.CANCELLED && orderStatus === OrderStatus.CANCELLED;
 
-    // Gunakan transaction untuk memastikan pembaruan data atomik
     await this.prisma.$transaction(async (tx) => {
-        // Perbarui status pesanan
         await tx.order.update({
             where: { id },
             data: {
@@ -257,10 +288,9 @@ export class OrdersService {
             },
         });
 
-        // Jika status pesanan diubah menjadi CANCELLED, kembalikan stok produk
         if (isStatusChangingToCancelled) {
             for (const item of existingOrder.orderItems) {
-                if (item.productId) { // Tambahkan pemeriksaan ini
+                if (item.productId) {
                     await tx.product.update({
                         where: { id: item.productId },
                         data: { stock: { increment: item.qty } },
@@ -316,7 +346,7 @@ export class OrdersService {
         newPaymentStatus = PaymentStatus.CANCELLED;
         if (order.paymentStatus !== newPaymentStatus) {
             for (const item of order.orderItems) {
-                if (item.productId) { // Tambahkan pemeriksaan ini
+                if (item.productId) {
                     await this.prisma.product.update({
                         where: { id: item.productId },
                         data: { stock: { increment: item.qty } },
@@ -456,10 +486,9 @@ export class OrdersService {
     throw new BadRequestException('Payment method is not supported for retry payment.');
   }
 
-  // --- Cron Job untuk menangani pesanan kedaluwarsa ---
   @Cron(CronExpression.EVERY_HOUR)
   async handleExpiredOrders() {
-      console.log('Running cron job to check for expired orders...');
+      this.logger.log('Running cron job to check for expired orders...');
       const expiredOrders = await this.prisma.order.findMany({
           where: {
               paymentStatus: PaymentStatus.PENDING,
@@ -469,7 +498,7 @@ export class OrdersService {
       });
 
       if (expiredOrders.length > 0) {
-          console.log(`Found ${expiredOrders.length} expired orders. Processing...`);
+          this.logger.log(`Found ${expiredOrders.length} expired orders. Processing...`);
           for (const order of expiredOrders) {
               await this.prisma.$transaction(async (tx) => {
                   await tx.order.update({
@@ -489,10 +518,10 @@ export class OrdersService {
                       }
                   }
               });
-              console.log(`Order #${order.id} expired. Status updated to CANCELLED and stock returned.`);
+              this.logger.log(`Order #${order.id} expired. Status updated to CANCELLED and stock returned.`);
           }
       } else {
-          console.log('No expired orders found.');
+          this.logger.log('No expired orders found.');
       }
   }
 }
