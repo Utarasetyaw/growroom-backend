@@ -28,30 +28,41 @@ export class PaymentService {
       ? 'https://app.midtrans.com/snap/v1/transactions'
       : 'https://app.sandbox.midtrans.com/snap/v1/transactions';
 
-    // 1. Create the Authorization header by Base64 encoding the server key + colon
     const serverKey = config.serverKey;
     const authString = Buffer.from(`${serverKey}:`).toString('base64');
 
-    // 2. Construct the request body according to Midtrans documentation
+    // --- PERBAIKAN DI SINI ---
+    // 1. Buat daftar item dari produk
+    const itemDetails = order.orderItems.map(item => {
+      const productName = (item.productName as any)?.en || (item.productName as any)?.id || 'Product';
+      return {
+        id: `PROD-${item.id}`, // Gunakan prefix agar ID unik
+        price: Math.round(item.price),
+        quantity: item.qty,
+        name: productName.substring(0, 50),
+      };
+    });
+
+    // 2. Jika ada ongkos kirim, tambahkan sebagai item terpisah
+    if (order.shippingCost > 0) {
+      itemDetails.push({
+        id: 'SHIPPING',
+        price: Math.round(order.shippingCost),
+        quantity: 1,
+        name: 'Shipping Cost',
+      });
+    }
+
     const payload = {
       transaction_details: {
-        order_id: `ORDER-${order.id}-${Date.now()}`, // Ensure a unique order_id
-        gross_amount: Math.round(order.total), // Midtrans expects an integer
+        order_id: `ORDER-${order.id}-${Date.now()}`,
+        gross_amount: Math.round(order.total),
       },
-      item_details: order.orderItems.map(item => {
-        const productName = (item.productName as any)?.en || (item.productName as any)?.id || 'Product';
-        return {
-          id: String(item.id),
-          price: Math.round(item.price),
-          quantity: item.qty,
-          name: productName.substring(0, 50),
-        };
-      }),
+      item_details: itemDetails, // Gunakan daftar item yang sudah diperbaiki
       customer_details: {
         first_name: order.user.name.split(' ')[0],
         last_name: order.user.name.split(' ').slice(1).join(' ') || order.user.name.split(' ')[0],
         email: order.user.email,
-        // phone: 'YOUR_CUSTOMER_PHONE' // Add phone if available
       },
       callbacks: {
         finish: `${process.env.FRONTEND_URL}/orders/${order.id}`
@@ -61,7 +72,6 @@ export class PaymentService {
     this.logger.log(`[Midtrans] Creating transaction for Order ID: ${payload.transaction_details.order_id}`);
     
     try {
-      // 3. Make the API call using axios
       const response = await axios.post(midtransUrl, payload, {
         headers: {
           'Accept': 'application/json',
