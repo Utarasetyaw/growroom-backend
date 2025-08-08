@@ -1,20 +1,19 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateChatMessageDto } from './dto/create-chat-message.dto';
 import { UpdateChatMessageDto } from './dto/update-chat-message.dto';
 import { sendTelegramMessage } from '../utils/telegram.util';
 import { ChatMessage, User } from '@prisma/client';
 
-// Membuat tipe data custom untuk hasil query agar lebih aman dan mudah dibaca
 type ChatMessageWithSender = ChatMessage & { sender: User };
 
 @Injectable()
 export class ChatMessagesService {
+  // Menambahkan Logger untuk output yang lebih terstruktur
+  private readonly logger = new Logger(ChatMessagesService.name);
+
   constructor(private prisma: PrismaService) {}
 
-  /**
-   * Membuat pesan baru dan memicu notifikasi jika perlu.
-   */
   async createMessage(dto: CreateChatMessageDto, senderId: number): Promise<ChatMessageWithSender> {
     const chatMessage = await this.prisma.chatMessage.create({
       data: {
@@ -23,42 +22,41 @@ export class ChatMessagesService {
         content: dto.content,
       },
       include: {
-        sender: true, // Mengambil semua data sender untuk notifikasi
+        sender: true,
       },
     });
 
-    // Memanggil fungsi notifikasi secara terpisah
     this._sendTelegramNotification(chatMessage);
 
     return chatMessage;
   }
 
-  /**
-   * Mengirim notifikasi Telegram jika pengirim adalah USER.
-   * Dibuat sebagai private method (_) agar tidak bisa diakses dari luar service ini.
-   */
   private async _sendTelegramNotification(chatMessage: ChatMessageWithSender): Promise<void> {
-    // 1. Notifikasi hanya dikirim jika pengirim adalah 'USER'
+    this.logger.log('1. Memulai proses pengecekan notifikasi Telegram...');
+
+    // Langkah 1: Cek role pengirim
+    this.logger.log(`2. Mengecek role pengirim: ${chatMessage.sender?.role}`);
     if (chatMessage.sender?.role !== 'USER') {
-      return; // Hentikan proses jika pengirim bukan USER
+      this.logger.warn('3. Proses dihentikan: Pengirim bukan "USER".');
+      return;
     }
+    this.logger.log('3. Kondisi role "USER" terpenuhi, melanjutkan...');
 
-    // 2. Ambil setting Telegram
+    // Langkah 2: Ambil setting Telegram dari database
     const setting = await this.prisma.generalSetting.findUnique({ where: { id: 1 } });
+    this.logger.log(`4. Mengambil data setting dari database...`);
     if (!setting?.telegramBotToken || !setting?.telegramChatId) {
-      console.error('[Telegram] Bot Token atau Chat ID tidak diatur di General Settings.');
-      return; // Hentikan jika setting tidak ada
+      this.logger.error('5. Proses dihentikan: Bot Token atau Chat ID tidak ditemukan di General Settings.');
+      return;
     }
+    this.logger.log('5. Setting ditemukan. Melanjutkan persiapan notifikasi...');
 
-    // 3. Siapkan data untuk template
+    // Langkah 3: Siapkan data untuk template
     const senderName = chatMessage.sender.name || `User #${chatMessage.senderId}`;
     const senderEmail = chatMessage.sender.email;
     const conversationId = chatMessage.conversationId;
+    const dashboardUrl = `${process.env.DASHBOARD_URL || 'http://localhost:3000'}/chats/${conversationId}`;
 
-    // 4. Praktik terbaik: Ambil URL dasar dari environment variable
-    const dashboardUrl = `${process.env.DASHBOARD_URL}/chats/${conversationId}`;
-
-    // 5. Buat teks notifikasi menggunakan template profesional
     const notifText = `
 🔔 *Anda Menerima Pesan Baru*
 
@@ -71,7 +69,10 @@ Klik tombol di bawah untuk melihat dan membalasnya.
 [Buka Percakapan](${dashboardUrl})
     `;
 
-    // 6. Kirim notifikasi
+    this.logger.log(`6. Siap mengirim notifikasi ke Chat ID: ${setting.telegramChatId}`);
+    this.logger.log(`7. Menggunakan Token yang berakhir dengan: ...${setting.telegramBotToken.slice(-6)}`);
+
+    // Langkah 4: Panggil fungsi untuk mengirim
     sendTelegramMessage(setting.telegramBotToken, setting.telegramChatId, notifText);
   }
 
