@@ -1,74 +1,90 @@
-import { Injectable, InternalServerErrorException, BadRequestException } from '@nestjs/common';
-import * as midtransClient from 'midtrans-client';
+import { Injectable, InternalServerErrorException, BadRequestException, Logger } from '@nestjs/common';
+import axios from 'axios'; // Import axios
 import * as paypal from '@paypal/checkout-server-sdk';
-import { OrderResponseDto } from '../orders/dto/order-response.dto'; // Impor DTO untuk type-safety
+import { OrderResponseDto } from '../orders/dto/order-response.dto';
 
-// Definisikan tipe untuk config agar lebih aman
 interface PaymentConfig {
   serverKey?: string;
   clientKey?: string;
   clientId?: string;
   clientSecret?: string;
-  mode?: 'sandbox' | 'production'; // Mode bisa sandbox atau production
+  mode?: 'sandbox' | 'production';
 }
 
 @Injectable()
 export class PaymentService {
+  private readonly logger = new Logger(PaymentService.name);
+
   /**
-   * MIDTRANS PAYMENT - Create Snap Transaction
+   * MIDTRANS PAYMENT - Create Snap Transaction (Revised)
    */
   async createMidtransTransaction(order: OrderResponseDto, config: PaymentConfig) {
-    if (!config?.serverKey || !config?.clientKey) {
-      throw new InternalServerErrorException('Midtrans config is missing');
+    if (!config?.serverKey) {
+      throw new InternalServerErrorException('Midtrans Server Key is missing from config.');
     }
 
-    // --- REVISI 1: Mode produksi/sandbox diambil dari config, bukan hardcode ---
     const isProduction = config.mode === 'production';
+    const midtransUrl = isProduction
+      ? 'https://app.midtrans.com/snap/v1/transactions'
+      : 'https://app.sandbox.midtrans.com/snap/v1/transactions';
 
-    const snap = new midtransClient.Snap({
-      isProduction,
-      serverKey: config.serverKey,
-      clientKey: config.clientKey,
-    });
+    // 1. Create the Authorization header by Base64 encoding the server key + colon
+    const serverKey = config.serverKey;
+    const authString = Buffer.from(`${serverKey}:`).toString('base64');
 
-    const order_id = `ORDER-${order.id}-${Date.now()}`;
-    const parameter = {
+    // 2. Construct the request body according to Midtrans documentation
+    const payload = {
       transaction_details: {
-        order_id,
-        gross_amount: order.total,
-      },
-      customer_details: {
-        email: order.user?.email,
-        first_name: order.user?.name,
+        order_id: `ORDER-${order.id}-${Date.now()}`, // Ensure a unique order_id
+        gross_amount: Math.round(order.total), // Midtrans expects an integer
       },
       item_details: order.orderItems.map(item => {
-        // --- REVISI 2: Mengambil nama produk dari snapshot yang lebih andal ---
-        const productName = (item.product?.name as any)?.en || (item.product?.name as any)?.id || 'Product';
+        const productName = (item.productName as any)?.en || (item.productName as any)?.id || 'Product';
         return {
-            id: String(item.id), // Gunakan ID OrderItem agar unik
-            price: item.price,
-            quantity: item.qty,
-            name: productName.substring(0, 50), // Midtrans punya batas 50 karakter
-        }
+          id: String(item.id),
+          price: Math.round(item.price),
+          quantity: item.qty,
+          name: productName.substring(0, 50),
+        };
       }),
+      customer_details: {
+        first_name: order.user.name.split(' ')[0],
+        last_name: order.user.name.split(' ').slice(1).join(' ') || order.user.name.split(' ')[0],
+        email: order.user.email,
+        // phone: 'YOUR_CUSTOMER_PHONE' // Add phone if available
+      },
+      callbacks: {
+        finish: `${process.env.FRONTEND_URL}/orders/${order.id}`
+      }
     };
 
+    this.logger.log(`[Midtrans] Creating transaction for Order ID: ${payload.transaction_details.order_id}`);
+    
     try {
-      const snapResponse = await snap.createTransaction(parameter);
+      // 3. Make the API call using axios
+      const response = await axios.post(midtransUrl, payload, {
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': `Basic ${authString}`,
+        },
+      });
+
+      this.logger.log(`[Midtrans] Successfully created transaction. Snap Token: ${response.data.token}`);
       return {
-        snapToken: snapResponse.token,
-        redirectUrl: snapResponse.redirect_url,
+        snapToken: response.data.token,
+        redirectUrl: response.data.redirect_url,
       };
     } catch (err) {
-      console.error('[MIDTRANS] Failed to create transaction', err.message);
-      throw new InternalServerErrorException('Failed to create Midtrans transaction');
+      const errorData = err.response?.data;
+      this.logger.error('[Midtrans] Failed to create transaction:', errorData || err.message);
+      throw new InternalServerErrorException(errorData?.error_messages || 'Failed to create Midtrans transaction');
     }
   }
 
   /**
    * PAYPAL PAYMENT - Create Checkout Session
    */
-  // --- REVISI 3: Tambahkan parameter `currencyCode` agar tidak bergantung pada data order ---
   async createPaypalTransaction(order: OrderResponseDto, config: PaymentConfig, currencyCode: string) {
     if (!config?.clientId || !config?.clientSecret) {
       throw new InternalServerErrorException('PayPal config is missing');
@@ -77,7 +93,6 @@ export class PaymentService {
         throw new BadRequestException('PayPal only supports USD currency for this setup.');
     }
 
-    // --- REVISI 4: Gunakan environment yang sesuai dari config ---
     const environment = config.mode === 'production'
       ? new paypal.core.LiveEnvironment(config.clientId, config.clientSecret)
       : new paypal.core.SandboxEnvironment(config.clientId, config.clientSecret);
@@ -92,18 +107,16 @@ export class PaymentService {
         {
           reference_id: `ORDER-${order.id}`,
           amount: {
-            currency_code: currencyCode, // Gunakan currencyCode dari parameter
-            // --- REVISI 5: Pastikan nilai memiliki 2 angka desimal ---
+            currency_code: currencyCode,
             value: order.total.toFixed(2),
           },
         },
       ],
       application_context: {
-        // --- REVISI 6: Ambil URL dari environment variable, jangan hardcode ---
         return_url: process.env.PAYPAL_RETURN_URL || 'http://localhost:3000/payment/success',
         cancel_url: process.env.PAYPAL_CANCEL_URL || 'http://localhost:3000/payment/cancel',
-        brand_name: 'Your Shop Name', // Ganti dengan nama toko Anda
-        shipping_preference: 'NO_SHIPPING', // Karena alamat sudah di-handle di sistem Anda
+        brand_name: 'Your Shop Name',
+        shipping_preference: 'NO_SHIPPING',
       },
     });
 
@@ -113,7 +126,7 @@ export class PaymentService {
       if (!approvalUrl) throw new InternalServerErrorException('No PayPal approval URL found');
       return { approvalUrl };
     } catch (err) {
-      console.error('[PAYPAL] Failed to create order', err.message);
+      this.logger.error('[PAYPAL] Failed to create order', err.message);
       throw new InternalServerErrorException('Failed to create PayPal transaction');
     }
   }

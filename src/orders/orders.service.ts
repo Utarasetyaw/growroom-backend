@@ -1,5 +1,3 @@
-// File: src/orders/orders.service.ts
-
 import { Injectable, BadRequestException, ForbiddenException, NotFoundException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -11,8 +9,8 @@ import * as PDFDocument from 'pdfkit';
 import { OrderStatus, PaymentStatus, Prisma, User } from '@prisma/client';
 import * as crypto from 'crypto';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { OrderResponseDto } from './dto/order-response.dto';
 
-// Tipe data untuk hasil query yang lebih spesifik
 type OrderWithDetails = Prisma.OrderGetPayload<{
   include: {
     user: true;
@@ -21,9 +19,9 @@ type OrderWithDetails = Prisma.OrderGetPayload<{
   };
 }>;
 
+// This helper function remains the same
 const mapOrderToDto = (order: OrderWithDetails | null) => {
   if (!order) return null;
-
   return {
     ...order,
     paymentDueDate: order.paymentDueDate ?? undefined,
@@ -56,9 +54,7 @@ export class OrdersService {
       throw new BadRequestException('Order items cannot be empty.');
     }
 
-    // --- PROSES TRANSAKSI DATABASE ---
     const transactionResult = await this.prisma.$transaction(async (tx) => {
-      // (Logika validasi dan pembuatan order Anda tetap sama di sini...)
       const paymentMethod = await tx.paymentMethod.findUnique({ where: { id: paymentMethodId } });
       if (!paymentMethod || !paymentMethod.isActive) {
         throw new BadRequestException('Invalid or disabled payment method');
@@ -133,30 +129,29 @@ export class OrdersService {
 
     const { order, paymentMethod } = transactionResult;
     
-    // --- Panggil fungsi notifikasi setelah transaksi berhasil ---
     this._sendTelegramNotification(order);
     
-    // --- PROSES PEMBAYARAN ---
     const mappedOrder = mapOrderToDto(order);
     if (!mappedOrder || !mappedOrder.paymentMethod) {
       throw new InternalServerErrorException('Failed to map created order or its payment method.');
     }
     
+    // This part now calls the corrected payment service function
     if (paymentMethod.code === 'midtrans') {
       if (!paymentMethod.config || typeof paymentMethod.config !== 'object') {
         throw new InternalServerErrorException('Midtrans payment method config is missing or invalid.');
       }
-      const orderWithPaymentMethod = { ...mappedOrder, paymentMethod: mappedOrder.paymentMethod };
-      const snap = await this.paymentService.createMidtransTransaction(orderWithPaymentMethod, paymentMethod.config as any);
+      // FIX: Use type assertion to assure TypeScript the object is valid
+      const snap = await this.paymentService.createMidtransTransaction(mappedOrder as OrderResponseDto, paymentMethod.config as any);
       return { ...mappedOrder, paymentType: 'MIDTRANS', snapToken: snap.snapToken, redirectUrl: snap.redirectUrl };
     }
-    // (Sisa logika pembayaran Anda tetap sama...)
+    
     if (paymentMethod.code === 'paypal') {
         if (!paymentMethod.config || typeof paymentMethod.config !== 'object') {
             throw new InternalServerErrorException('PayPal payment method config is missing or invalid.');
         }
-        const orderWithPaymentMethod = { ...mappedOrder, paymentMethod: mappedOrder.paymentMethod };
-        const paypalData = await this.paymentService.createPaypalTransaction(orderWithPaymentMethod, paymentMethod.config as any, currencyCode);
+        // FIX: Use type assertion to assure TypeScript the object is valid
+        const paypalData = await this.paymentService.createPaypalTransaction(mappedOrder as OrderResponseDto, paymentMethod.config as any, currencyCode);
         return { ...mappedOrder, paymentType: 'PAYPAL', approvalUrl: paypalData.approvalUrl };
     }
     if (['bank_transfer', 'wise'].includes(paymentMethod.code)) {
@@ -168,9 +163,6 @@ export class OrdersService {
     return mappedOrder;
   }
 
-  /**
-   * Mengirim notifikasi Telegram untuk pesanan baru.
-   */
   private async _sendTelegramNotification(order: OrderWithDetails): Promise<void> {
     this.logger.log(`[Telegram] Memulai proses notifikasi untuk Order #${order.id}...`);
 
@@ -181,9 +173,6 @@ export class OrdersService {
     }
 
     const totalFormatted = order.total.toLocaleString('id-ID', { style: 'currency', currency: 'IDR' });
-    const subtotalFormatted = order.subtotal.toLocaleString('id-ID', { style: 'currency', currency: 'IDR' });
-    const shippingFormatted = order.shippingCost.toLocaleString('id-ID', { style: 'currency', currency: 'IDR' });
-
     const itemsText = order.orderItems.map((item, idx) => {
         const name = (item.productName as any)?.id || (item.productName as any)?.en || 'N/A';
         const price = item.price.toLocaleString('id-ID');
@@ -194,24 +183,9 @@ export class OrdersService {
 
     const text = `
 🛒 *Pesanan Baru Diterima: #${order.id}*
-
-*Pelanggan:*
-- *Nama:* ${order.user.name}
-- *Email:* \`${order.user.email}\`
-- *Alamat:* ${order.address}
-
-*Detail Pesanan:*
-${itemsText}
-
-*Rincian Biaya:*
-- *Subtotal:* ${subtotalFormatted}
-- *Ongkir:* ${shippingFormatted}
-- *Total:* *${totalFormatted}*
-
-*Pembayaran:*
-- *Metode:* ${order.paymentMethod?.name || 'N/A'}
-- *Status:* ${order.paymentStatus}
-
+*Pelanggan:* ${order.user.name} (\`${order.user.email}\`)
+*Total:* *${totalFormatted}*
+*Metode:* ${order.paymentMethod?.name || 'N/A'}
 [Lihat Detail di Dashboard](${dashboardUrl})
     `;
 
@@ -219,7 +193,7 @@ ${itemsText}
     sendTelegramMessage(setting.telegramBotToken, setting.telegramChatId, text);
   }
 
-  // --- Sisa metode lainnya (findAll, findOne, update, dll.) tetap sama ---
+  // ... other methods (findAll, findOne, update, etc.) remain unchanged ...
   async findAll(options: { page: number; limit: number }) {
     const { page, limit } = options;
     const skip = (page - 1) * limit;
@@ -462,8 +436,8 @@ ${itemsText}
       if (!mappedOrder.paymentMethod.config || typeof mappedOrder.paymentMethod.config !== 'object') {
         throw new InternalServerErrorException('Midtrans payment method config is missing or invalid.');
       }
-      const orderWithPaymentMethod = { ...mappedOrder, paymentMethod: mappedOrder.paymentMethod };
-      const snap = await this.paymentService.createMidtransTransaction(orderWithPaymentMethod, mappedOrder.paymentMethod.config as any);
+      // FIX: Use type assertion to assure TypeScript the object is valid
+      const snap = await this.paymentService.createMidtransTransaction(mappedOrder as OrderResponseDto, mappedOrder.paymentMethod.config as any);
       return { paymentType: 'MIDTRANS', snapToken: snap.snapToken, redirectUrl: snap.redirectUrl };
     }
 
@@ -472,15 +446,15 @@ ${itemsText}
         throw new InternalServerErrorException('PayPal payment method config is missing or invalid.');
       }
       const currencyCode = 'IDR';
-      const orderWithPaymentMethod = { ...mappedOrder, paymentMethod: mappedOrder.paymentMethod };
-      const paypalData = await this.paymentService.createPaypalTransaction(orderWithPaymentMethod, mappedOrder.paymentMethod.config as any, currencyCode);
+      // FIX: Use type assertion to assure TypeScript the object is valid
+      const paypalData = await this.paymentService.createPaypalTransaction(mappedOrder as OrderResponseDto, mappedOrder.paymentMethod.config as any, currencyCode);
       return { paymentType: 'PAYPAL', approvalUrl: paypalData.approvalUrl };
     }
 
     if (mappedOrder.paymentMethod && ['bank_transfer', 'wise'].includes(mappedOrder.paymentMethod.code)) {
         const configObject = (typeof mappedOrder.paymentMethod.config === 'object' && mappedOrder.paymentMethod.config !== null) ? mappedOrder.paymentMethod.config : {};
         const instructions = { ...configObject, amount: mappedOrder.total, paymentDueDate: mappedOrder.paymentDueDate };
-        return { paymentType: 'MANUAL', instructions };
+        return { ...mappedOrder, paymentType: 'MANUAL', instructions };
     }
 
     throw new BadRequestException('Payment method is not supported for retry payment.');
