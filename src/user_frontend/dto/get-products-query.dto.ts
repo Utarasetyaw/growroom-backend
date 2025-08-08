@@ -17,29 +17,29 @@ export class GetProductsQueryDto {
   @Min(1)
   limit?: number = 12;
 
-  @ApiPropertyOptional({ description: 'Filter berdasarkan ID Kategori' })
+  @ApiPropertyOptional({ description: 'ID kategori untuk filter' })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   categoryId?: number;
 
-  @ApiPropertyOptional({ description: 'Filter berdasarkan ID Sub-Kategori' })
+  @ApiPropertyOptional({ description: 'ID sub-kategori untuk filter' })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   subCategoryId?: number;
 
-  @ApiPropertyOptional({ description: 'Kata kunci pencarian produk' })
+  @ApiPropertyOptional({ description: 'Teks pencarian untuk nama produk' })
   @IsOptional()
   @IsString()
   search?: string;
-  
+
   @ApiPropertyOptional({ description: 'Filter berdasarkan varian produk' })
   @IsOptional()
   @IsString()
   variant?: string;
 
-  @ApiPropertyOptional({ description: 'Filter berdasarkan ketersediaan stok', enum: ['AVAILABLE', 'OUT_OF_STOCK'] })
+  @ApiPropertyOptional({ enum: ['AVAILABLE', 'OUT_OF_STOCK'], description: 'Filter berdasarkan ketersediaan stok' })
   @IsOptional()
   @IsEnum(['AVAILABLE', 'OUT_OF_STOCK'])
   availability?: 'AVAILABLE' | 'OUT_OF_STOCK';
@@ -57,4 +57,9 @@ export class GetProductsQueryDto {
   @IsInt()
   @Min(0)
   maxPrice?: number;
+
+  @ApiPropertyOptional({ description: 'Kode mata uang untuk filter harga (e.g., IDR, USD)', example: 'IDR' })
+  @IsOptional()
+  @IsString()
+  currencyCode?: string;
 }

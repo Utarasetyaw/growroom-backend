@@ -19,6 +19,7 @@ export class ProductsService {
     subCategory: true,
   };
 
+  // ... (Metode findAll, findOne, create, update, remove, findBestProducts tetap sama) ...
   async findAll() {
     return this.prisma.product.findMany({
       include: this.productInclude,
@@ -181,6 +182,7 @@ export class ProductsService {
       availability,
       minPrice,
       maxPrice,
+      currencyCode, // <-- Ambil currencyCode dari query
     } = query;
     const skip = (page - 1) * limit;
 
@@ -219,6 +221,7 @@ export class ProductsService {
       }
     }
 
+    // --- PERBAIKAN LOGIKA FILTER HARGA ---
     if (minPrice !== undefined || maxPrice !== undefined) {
       where.prices = {
         some: {
@@ -226,6 +229,12 @@ export class ProductsService {
             gte: minPrice,
             lte: maxPrice,
           },
+          // Tambahkan filter berdasarkan currencyCode jika ada
+          ...(currencyCode && {
+            currency: {
+              code: currencyCode,
+            },
+          }),
         },
       };
     }
