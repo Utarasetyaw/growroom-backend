@@ -20,7 +20,7 @@ export class ShippingRateService {
           })),
         },
       },
-      include: { prices: true }
+      include: { prices: { include: { currency: true } }, zone: true }
     });
   }
 
@@ -41,34 +41,39 @@ export class ShippingRateService {
   }
 
   async update(id: number, dto: UpdateShippingRateDto) {
-    // Update city/isActive
-    const updateData: any = {};
-    if (dto.city !== undefined) updateData.city = dto.city;
-    if (dto.isActive !== undefined) updateData.isActive = dto.isActive;
-
-    // Untuk prices (replace all!)
-    if (dto.prices) {
-      // Hapus semua lalu tambah baru
-      await this.prisma.shippingRatePrice.deleteMany({ where: { shippingRateId: id } });
-      await this.prisma.shippingRatePrice.createMany({
-        data: dto.prices.map(p => ({
-          shippingRateId: id,
-          currencyId: p.currencyId,
-          price: p.price,
-        })),
-        skipDuplicates: true,
-      });
+    // Pastikan rate yang akan diupdate ada
+    const rate = await this.prisma.shippingRate.findUnique({ where: { id } });
+    if (!rate) {
+      throw new NotFoundException(`Shipping Rate with ID ${id} not found.`);
     }
 
+    // Gunakan satu operasi update dengan nested writes untuk atomicity
     return this.prisma.shippingRate.update({
       where: { id },
-      data: updateData,
-      include: { prices: { include: { currency: true } } },
+      data: {
+        // Update city dan status jika ada di DTO
+        city: dto.city,
+        isActive: dto.isActive,
+        // Jika ada 'prices' di DTO, hapus yang lama dan buat yang baru
+        ...(dto.prices && {
+          prices: {
+            deleteMany: {}, // Hapus semua harga yang terkait dengan rate ini
+            create: dto.prices.map(p => ({
+              currencyId: p.currencyId,
+              price: p.price,
+            })),
+          },
+        }),
+      },
+      include: { prices: { include: { currency: true } }, zone: true },
     });
   }
 
   async remove(id: number) {
-    await this.prisma.shippingRatePrice.deleteMany({ where: { shippingRateId: id } });
-    return this.prisma.shippingRate.delete({ where: { id } });
+    // Gunakan $transaction untuk memastikan relasi terhapus sebelum rate dihapus
+    return this.prisma.$transaction(async (tx) => {
+      await tx.shippingRatePrice.deleteMany({ where: { shippingRateId: id } });
+      return tx.shippingRate.delete({ where: { id } });
+    });
   }
 }
