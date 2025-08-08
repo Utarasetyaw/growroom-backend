@@ -48,6 +48,7 @@ export class OrdersService {
     private cartService: CartService,
   ) {}
 
+  // ... create() and other methods remain the same ...
   async create(userId: number, dto: CreateOrderDto) {
     const { orderItems, currencyCode, paymentMethodId, shippingRateId, address } = dto;
     if (!orderItems || orderItems.length === 0) {
@@ -136,12 +137,10 @@ export class OrdersService {
       throw new InternalServerErrorException('Failed to map created order or its payment method.');
     }
     
-    // This part now calls the corrected payment service function
     if (paymentMethod.code === 'midtrans') {
       if (!paymentMethod.config || typeof paymentMethod.config !== 'object') {
         throw new InternalServerErrorException('Midtrans payment method config is missing or invalid.');
       }
-      // FIX: Use type assertion to assure TypeScript the object is valid
       const snap = await this.paymentService.createMidtransTransaction(mappedOrder as OrderResponseDto, paymentMethod.config as any);
       return { ...mappedOrder, paymentType: 'MIDTRANS', snapToken: snap.snapToken, redirectUrl: snap.redirectUrl };
     }
@@ -150,7 +149,6 @@ export class OrdersService {
         if (!paymentMethod.config || typeof paymentMethod.config !== 'object') {
             throw new InternalServerErrorException('PayPal payment method config is missing or invalid.');
         }
-        // FIX: Use type assertion to assure TypeScript the object is valid
         const paypalData = await this.paymentService.createPaypalTransaction(mappedOrder as OrderResponseDto, paymentMethod.config as any, currencyCode);
         return { ...mappedOrder, paymentType: 'PAYPAL', approvalUrl: paypalData.approvalUrl };
     }
@@ -193,7 +191,6 @@ export class OrdersService {
     sendTelegramMessage(setting.telegramBotToken, setting.telegramChatId, text);
   }
 
-  // ... other methods (findAll, findOne, update, etc.) remain unchanged ...
   async findAll(options: { page: number; limit: number }) {
     const { page, limit } = options;
     const skip = (page - 1) * limit;
@@ -277,48 +274,71 @@ export class OrdersService {
     return this.findOne(id);
   }
 
+  // --- REVISED WEBHOOK HANDLER ---
   async handlePaymentNotification(payload: any) {
+    this.logger.log('[Webhook] Received payment notification from Midtrans.');
+    this.logger.debug('[Webhook] Payload:', JSON.stringify(payload, null, 2));
+
     const orderIdString = payload.order_id?.split('-')[1];
-    if (!orderIdString) throw new BadRequestException('order_id is missing or in an invalid format');
+    if (!orderIdString) {
+      this.logger.error('[Webhook] order_id is missing or in an invalid format.');
+      throw new BadRequestException('order_id is missing or in an invalid format');
+    }
     
     const orderId = parseInt(orderIdString, 10);
-    if (isNaN(orderId)) throw new BadRequestException('Invalid order_id format in notification');
+    if (isNaN(orderId)) {
+      this.logger.error(`[Webhook] Invalid order_id format: ${orderIdString}`);
+      throw new BadRequestException('Invalid order_id format in notification');
+    }
+    this.logger.log(`[Webhook] Parsed Order ID: ${orderId}`);
 
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       include: { paymentMethod: true, orderItems: true },
     });
+
     if (!order) {
+      this.logger.warn(`[Webhook] Order #${orderId} not found in database.`);
       throw new NotFoundException('Order not found from notification');
     }
     
-    if (!order.paymentMethod) {
-        throw new InternalServerErrorException(`Order #${orderId} does not have a linked payment method.`);
+    if (order.paymentMethod?.code !== 'midtrans') {
+      this.logger.warn(`[Webhook] Order #${orderId} was not paid with Midtrans. Ignoring.`);
+      return { message: 'Not a Midtrans order, ignored.' };
     }
 
-    if(order.paymentMethod.code === 'midtrans') {
-      if (!order.paymentMethod.config) {
-        throw new InternalServerErrorException('Payment method config not found');
-      }
-      const serverKey = order.paymentMethod.config['serverKey'];
-      if (!serverKey) {
-        throw new InternalServerErrorException('Server key not configured for payment method');
-      }
-      
-      const signatureKey = crypto.createHash('sha512').update(`${payload.order_id}${payload.status_code}${payload.gross_amount}${serverKey}`).digest('hex');
-      if (signatureKey !== payload.signature_key) {
-        throw new ForbiddenException('Invalid signature');
-      }
+    if (!order.paymentMethod.config || typeof order.paymentMethod.config !== 'object') {
+      this.logger.error(`[Webhook] Midtrans config not found for Order #${orderId}`);
+      throw new InternalServerErrorException('Payment method config not found');
     }
+
+    const serverKey = order.paymentMethod.config['serverKey'] as string;
+    if (!serverKey) {
+      this.logger.error(`[Webhook] Server key not configured for Order #${orderId}`);
+      throw new InternalServerErrorException('Server key not configured for payment method');
+    }
+    
+    const signatureKey = crypto.createHash('sha512').update(`${payload.order_id}${payload.status_code}${payload.gross_amount}${serverKey}`).digest('hex');
+    this.logger.log(`[Webhook] Generated Signature: ${signatureKey}`);
+    this.logger.log(`[Webhook] Midtrans Signature:  ${payload.signature_key}`);
+
+    if (signatureKey !== payload.signature_key) {
+      this.logger.error(`[Webhook] Invalid signature for Order #${orderId}`);
+      throw new ForbiddenException('Invalid signature');
+    }
+    this.logger.log('[Webhook] Signature is valid.');
 
     let newPaymentStatus: PaymentStatus;
     const transactionStatus = payload.transaction_status;
+    this.logger.log(`[Webhook] Transaction Status: ${transactionStatus}`);
 
     if (transactionStatus === 'settlement' || transactionStatus === 'capture') {
         newPaymentStatus = PaymentStatus.PAID;
     } else if (transactionStatus === 'cancel' || transactionStatus === 'deny' || transactionStatus === 'expire') {
         newPaymentStatus = PaymentStatus.CANCELLED;
+        // Restore stock if payment is cancelled/expired
         if (order.paymentStatus !== newPaymentStatus) {
+            this.logger.log(`[Webhook] Restoring stock for cancelled Order #${orderId}`);
             for (const item of order.orderItems) {
                 if (item.productId) {
                     await this.prisma.product.update({
@@ -329,6 +349,7 @@ export class OrdersService {
             }
         }
     } else {
+        this.logger.log(`[Webhook] Notification for pending/unhandled status received for Order #${orderId}. No action taken.`);
         return { message: 'Notification for pending status received, no action taken.' };
     }
 
@@ -337,6 +358,9 @@ export class OrdersService {
             where: { id: orderId },
             data: { paymentStatus: newPaymentStatus },
         });
+        this.logger.log(`[Webhook] SUCCESS: Order #${orderId} payment status updated to ${newPaymentStatus}`);
+    } else {
+        this.logger.log(`[Webhook] Order #${orderId} status is already ${newPaymentStatus}. No update needed.`);
     }
 
     return { message: 'Payment notification processed successfully' };
@@ -436,7 +460,6 @@ export class OrdersService {
       if (!mappedOrder.paymentMethod.config || typeof mappedOrder.paymentMethod.config !== 'object') {
         throw new InternalServerErrorException('Midtrans payment method config is missing or invalid.');
       }
-      // FIX: Use type assertion to assure TypeScript the object is valid
       const snap = await this.paymentService.createMidtransTransaction(mappedOrder as OrderResponseDto, mappedOrder.paymentMethod.config as any);
       return { paymentType: 'MIDTRANS', snapToken: snap.snapToken, redirectUrl: snap.redirectUrl };
     }
@@ -446,13 +469,11 @@ export class OrdersService {
         throw new InternalServerErrorException('PayPal payment method config is missing or invalid.');
       }
       const currencyCode = 'IDR';
-      // FIX: Use type assertion to assure TypeScript the object is valid
       const paypalData = await this.paymentService.createPaypalTransaction(mappedOrder as OrderResponseDto, mappedOrder.paymentMethod.config as any, currencyCode);
       return { paymentType: 'PAYPAL', approvalUrl: paypalData.approvalUrl };
     }
 
     if (mappedOrder.paymentMethod && ['bank_transfer', 'wise'].includes(mappedOrder.paymentMethod.code)) {
-        // FIX: Corrected the variable from 'paymentMethod' to 'mappedOrder.paymentMethod'
         const configObject = (typeof mappedOrder.paymentMethod.config === 'object' && mappedOrder.paymentMethod.config !== null) ? mappedOrder.paymentMethod.config : {};
         const instructions = { ...configObject, amount: mappedOrder.total, paymentDueDate: mappedOrder.paymentDueDate };
         return { ...mappedOrder, paymentType: 'MANUAL', instructions };
