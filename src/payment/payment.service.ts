@@ -31,19 +31,16 @@ export class PaymentService {
     const serverKey = config.serverKey;
     const authString = Buffer.from(`${serverKey}:`).toString('base64');
 
-    // --- PERBAIKAN DI SINI ---
-    // 1. Buat daftar item dari produk
     const itemDetails = order.orderItems.map(item => {
       const productName = (item.productName as any)?.en || (item.productName as any)?.id || 'Product';
       return {
-        id: `PROD-${item.id}`, // Gunakan prefix agar ID unik
+        id: `PROD-${item.id}`,
         price: Math.round(item.price),
         quantity: item.qty,
         name: productName.substring(0, 50),
       };
     });
 
-    // 2. Jika ada ongkos kirim, tambahkan sebagai item terpisah
     if (order.shippingCost > 0) {
       itemDetails.push({
         id: 'SHIPPING',
@@ -58,7 +55,7 @@ export class PaymentService {
         order_id: `ORDER-${order.id}-${Date.now()}`,
         gross_amount: Math.round(order.total),
       },
-      item_details: itemDetails, // Gunakan daftar item yang sudah diperbaiki
+      item_details: itemDetails,
       customer_details: {
         first_name: order.user.name.split(' ')[0],
         last_name: order.user.name.split(' ').slice(1).join(' ') || order.user.name.split(' ')[0],
@@ -80,7 +77,10 @@ export class PaymentService {
         },
       });
 
-      this.logger.log(`[Midtrans] Successfully created transaction. Snap Token: ${response.data.token}`);
+      // --- PERBAIKAN LOG DI SINI ---
+      // Mencetak seluruh respons dari Midtrans untuk debugging
+      this.logger.log('[Midtrans] Successfully created transaction. Full response:', JSON.stringify(response.data));
+      
       return {
         snapToken: response.data.token,
         redirectUrl: response.data.redirect_url,
