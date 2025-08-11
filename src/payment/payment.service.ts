@@ -1,5 +1,5 @@
 import { Injectable, InternalServerErrorException, BadRequestException, Logger } from '@nestjs/common';
-import axios from 'axios'; // Import axios
+import axios from 'axios';
 import * as paypal from '@paypal/checkout-server-sdk';
 import { OrderResponseDto } from '../orders/dto/order-response.dto';
 
@@ -52,7 +52,10 @@ export class PaymentService {
 
     const payload = {
       transaction_details: {
-        order_id: `ORDER-${order.id}-${Date.now()}`,
+        // --- PERUBAHAN KRUSIAL ADA DI SINI ---
+        // Menghapus `Date.now()` agar order_id konsisten untuk setiap order.
+        // Ini memastikan webhook dapat dengan andal mencocokkan notifikasi dengan data di database Anda.
+        order_id: `ORDER-${order.id}`,
         gross_amount: Math.round(order.total),
       },
       item_details: itemDetails,
@@ -77,9 +80,7 @@ export class PaymentService {
         },
       });
 
-      // --- PERBAIKAN LOG DI SINI ---
-      // Mencetak seluruh respons dari Midtrans untuk debugging
-      this.logger.log('[Midtrans] Successfully created transaction. Full response:', JSON.stringify(response.data));
+      this.logger.log('[Midtrans] Successfully created transaction. Response:', JSON.stringify(response.data));
       
       return {
         snapToken: response.data.token,

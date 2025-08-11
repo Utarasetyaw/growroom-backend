@@ -19,7 +19,7 @@ type OrderWithDetails = Prisma.OrderGetPayload<{
   };
 }>;
 
-// This helper function remains the same
+// Helper function ini tetap sama
 const mapOrderToDto = (order: OrderWithDetails | null) => {
   if (!order) return null;
   return {
@@ -47,8 +47,8 @@ export class OrdersService {
     private paymentService: PaymentService,
     private cartService: CartService,
   ) {}
-
-  // ... create() and other methods remain the same ...
+  
+  // Method create() tidak perlu diubah, karena logikanya sudah benar.
   async create(userId: number, dto: CreateOrderDto) {
     const { orderItems, currencyCode, paymentMethodId, shippingRateId, address } = dto;
     if (!orderItems || orderItems.length === 0) {
@@ -161,6 +161,114 @@ export class OrdersService {
     return mappedOrder;
   }
 
+  // --- WEBHOOK HANDLER YANG SEPENUHNYA DIREVISI ---
+  async handlePaymentNotification(payload: any) {
+    this.logger.log('[Webhook] Received payment notification from Midtrans.');
+    this.logger.debug('[Webhook] Payload:', JSON.stringify(payload, null, 2));
+
+    // 1. Parsing Order ID yang lebih andal
+    const orderIdString = payload.order_id?.replace('ORDER-', '');
+    if (!orderIdString) {
+      this.logger.error('[Webhook] order_id is missing or in an invalid format.');
+      throw new BadRequestException('order_id is missing or in an invalid format');
+    }
+    
+    const orderId = parseInt(orderIdString, 10);
+    if (isNaN(orderId)) {
+      this.logger.error(`[Webhook] Invalid order_id format: ${orderIdString}`);
+      throw new BadRequestException('Invalid order_id format in notification');
+    }
+    this.logger.log(`[Webhook] Parsed Order ID: ${orderId}`);
+
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: { paymentMethod: true, orderItems: true },
+    });
+
+    if (!order) {
+      this.logger.warn(`[Webhook] Order #${orderId} not found in database. Acknowledging to stop retries.`);
+      // Kembalikan 200 OK agar Midtrans tidak mengirim notifikasi berulang untuk order yang tidak ada.
+      return { message: `Order #${orderId} not found, but acknowledged.` };
+    }
+    
+    if (order.paymentMethod?.code !== 'midtrans') {
+      this.logger.warn(`[Webhook] Order #${orderId} was not paid with Midtrans. Ignoring.`);
+      return { message: 'Not a Midtrans order, ignored.' };
+    }
+
+    if (!order.paymentMethod.config || typeof order.paymentMethod.config !== 'object') {
+      this.logger.error(`[Webhook] Midtrans config not found for Order #${orderId}`);
+      throw new InternalServerErrorException('Payment method config not found');
+    }
+
+    const serverKey = order.paymentMethod.config['serverKey'] as string;
+    if (!serverKey) {
+      this.logger.error(`[Webhook] Server key not configured for Order #${orderId}`);
+      throw new InternalServerErrorException('Server key not configured for payment method');
+    }
+    
+    // 2. Verifikasi Signature (tetap sama, tapi krusial)
+    const signatureKey = crypto.createHash('sha512').update(`${payload.order_id}${payload.status_code}${payload.gross_amount}${serverKey}`).digest('hex');
+    this.logger.log(`[Webhook] Generated Signature: ${signatureKey}`);
+    this.logger.log(`[Webhook] Midtrans Signature:  ${payload.signature_key}`);
+
+    if (signatureKey !== payload.signature_key) {
+      this.logger.error(`[Webhook] Invalid signature for Order #${orderId}`);
+      throw new ForbiddenException('Invalid signature');
+    }
+    this.logger.log('[Webhook] Signature is valid.');
+
+    // 3. Logika pembaruan status yang lebih jelas
+    let newPaymentStatus: PaymentStatus;
+    let newOrderStatus: OrderStatus | undefined = undefined; // Siapkan variabel untuk status order
+    const transactionStatus = payload.transaction_status;
+    this.logger.log(`[Webhook] Transaction Status: ${transactionStatus}`);
+
+    if (transactionStatus === 'settlement' || transactionStatus === 'capture') {
+        newPaymentStatus = PaymentStatus.PAID;
+        // Status order tetap 'PROCESSING', ini sudah benar karena pesanan perlu diproses setelah dibayar.
+    } else if (transactionStatus === 'cancel' || transactionStatus === 'deny' || transactionStatus === 'expire') {
+        newPaymentStatus = PaymentStatus.CANCELLED;
+        newOrderStatus = OrderStatus.CANCELLED; // Batalkan order juga
+        
+        // Kembalikan stok jika pembayaran gagal/kedaluwarsa (hanya jika status belum CANCELLED)
+        if (order.paymentStatus !== PaymentStatus.CANCELLED) {
+            this.logger.log(`[Webhook] Restoring stock for cancelled Order #${orderId}`);
+            for (const item of order.orderItems) {
+                if (item.productId) {
+                    await this.prisma.product.update({
+                        where: { id: item.productId },
+                        data: { stock: { increment: item.qty } },
+                    });
+                }
+            }
+        }
+    } else {
+        this.logger.log(`[Webhook] Notification for pending/unhandled status (${transactionStatus}) received for Order #${orderId}. No action taken.`);
+        return { message: 'Notification for pending status received, no action taken.' };
+    }
+
+    // 4. Update ke database hanya jika ada perubahan status
+    if (order.paymentStatus !== newPaymentStatus) {
+        await this.prisma.order.update({
+            where: { id: orderId },
+            data: { 
+              paymentStatus: newPaymentStatus,
+              // Update orderStatus juga jika nilainya sudah di-set (misal: saat dibatalkan)
+              ...(newOrderStatus && { orderStatus: newOrderStatus }),
+            },
+        });
+        this.logger.log(`[Webhook] SUCCESS: Order #${orderId} payment status updated to ${newPaymentStatus}. Order status is now ${newOrderStatus || order.orderStatus}.`);
+    } else {
+        this.logger.log(`[Webhook] Order #${orderId} status is already ${newPaymentStatus}. No update needed.`);
+    }
+
+    return { message: 'Payment notification processed successfully' };
+  }
+
+  // Sisa dari file (findAll, findOne, update, dll.) tetap sama
+  // ...
+  
   private async _sendTelegramNotification(order: OrderWithDetails): Promise<void> {
     this.logger.log(`[Telegram] Memulai proses notifikasi untuk Order #${order.id}...`);
 
@@ -274,98 +382,6 @@ export class OrdersService {
     return this.findOne(id);
   }
 
-  // --- REVISED WEBHOOK HANDLER ---
-  async handlePaymentNotification(payload: any) {
-    this.logger.log('[Webhook] Received payment notification from Midtrans.');
-    this.logger.debug('[Webhook] Payload:', JSON.stringify(payload, null, 2));
-
-    const orderIdString = payload.order_id?.split('-')[1];
-    if (!orderIdString) {
-      this.logger.error('[Webhook] order_id is missing or in an invalid format.');
-      throw new BadRequestException('order_id is missing or in an invalid format');
-    }
-    
-    const orderId = parseInt(orderIdString, 10);
-    if (isNaN(orderId)) {
-      this.logger.error(`[Webhook] Invalid order_id format: ${orderIdString}`);
-      throw new BadRequestException('Invalid order_id format in notification');
-    }
-    this.logger.log(`[Webhook] Parsed Order ID: ${orderId}`);
-
-    const order = await this.prisma.order.findUnique({
-      where: { id: orderId },
-      include: { paymentMethod: true, orderItems: true },
-    });
-
-    if (!order) {
-      this.logger.warn(`[Webhook] Order #${orderId} not found in database.`);
-      throw new NotFoundException('Order not found from notification');
-    }
-    
-    if (order.paymentMethod?.code !== 'midtrans') {
-      this.logger.warn(`[Webhook] Order #${orderId} was not paid with Midtrans. Ignoring.`);
-      return { message: 'Not a Midtrans order, ignored.' };
-    }
-
-    if (!order.paymentMethod.config || typeof order.paymentMethod.config !== 'object') {
-      this.logger.error(`[Webhook] Midtrans config not found for Order #${orderId}`);
-      throw new InternalServerErrorException('Payment method config not found');
-    }
-
-    const serverKey = order.paymentMethod.config['serverKey'] as string;
-    if (!serverKey) {
-      this.logger.error(`[Webhook] Server key not configured for Order #${orderId}`);
-      throw new InternalServerErrorException('Server key not configured for payment method');
-    }
-    
-    const signatureKey = crypto.createHash('sha512').update(`${payload.order_id}${payload.status_code}${payload.gross_amount}${serverKey}`).digest('hex');
-    this.logger.log(`[Webhook] Generated Signature: ${signatureKey}`);
-    this.logger.log(`[Webhook] Midtrans Signature:  ${payload.signature_key}`);
-
-    if (signatureKey !== payload.signature_key) {
-      this.logger.error(`[Webhook] Invalid signature for Order #${orderId}`);
-      throw new ForbiddenException('Invalid signature');
-    }
-    this.logger.log('[Webhook] Signature is valid.');
-
-    let newPaymentStatus: PaymentStatus;
-    const transactionStatus = payload.transaction_status;
-    this.logger.log(`[Webhook] Transaction Status: ${transactionStatus}`);
-
-    if (transactionStatus === 'settlement' || transactionStatus === 'capture') {
-        newPaymentStatus = PaymentStatus.PAID;
-    } else if (transactionStatus === 'cancel' || transactionStatus === 'deny' || transactionStatus === 'expire') {
-        newPaymentStatus = PaymentStatus.CANCELLED;
-        // Restore stock if payment is cancelled/expired
-        if (order.paymentStatus !== newPaymentStatus) {
-            this.logger.log(`[Webhook] Restoring stock for cancelled Order #${orderId}`);
-            for (const item of order.orderItems) {
-                if (item.productId) {
-                    await this.prisma.product.update({
-                        where: { id: item.productId },
-                        data: { stock: { increment: item.qty } },
-                    });
-                }
-            }
-        }
-    } else {
-        this.logger.log(`[Webhook] Notification for pending/unhandled status received for Order #${orderId}. No action taken.`);
-        return { message: 'Notification for pending status received, no action taken.' };
-    }
-
-    if (order.paymentStatus !== newPaymentStatus) {
-        await this.prisma.order.update({
-            where: { id: orderId },
-            data: { paymentStatus: newPaymentStatus },
-        });
-        this.logger.log(`[Webhook] SUCCESS: Order #${orderId} payment status updated to ${newPaymentStatus}`);
-    } else {
-        this.logger.log(`[Webhook] Order #${orderId} status is already ${newPaymentStatus}. No update needed.`);
-    }
-
-    return { message: 'Payment notification processed successfully' };
-  }
-  
   async generateInvoicePdf(orderId: number, userId?: number): Promise<Buffer> {
     const order = await this.findOne(orderId, userId);
     if (!order) {
