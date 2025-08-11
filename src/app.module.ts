@@ -25,6 +25,7 @@ import { FinanceModule } from './finance/finance.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { UserFrontendModule } from './user_frontend/user_frontend.module';
 import { CartModule } from './cart/cart.module';
+import { MidtransModule } from './midtrans/midtrans.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { CartModule } from './cart/cart.module';
     DashboardModule, 
     UserFrontendModule, 
     CartModule,
+    MidtransModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,5 +1,3 @@
-// File: src/orders/dto/order-response.dto.ts
-
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { OrderStatus, PaymentStatus } from '@prisma/client';
 
@@ -10,7 +8,7 @@ class UserInOrderDto {
 
   @ApiProperty()
   name: string;
-  
+
   @ApiProperty()
   email: string;
 }
@@ -19,8 +17,11 @@ class ProductInOrderDto {
   @ApiProperty()
   id: number;
 
-  @ApiProperty({ description: 'Nama produk saat ini (bisa berubah). Untuk nama saat order, gunakan `productName` di OrderItem.'})
-  name: any; // Tetap 'any' untuk JSON
+  @ApiProperty({
+    description:
+      'Nama produk saat ini (bisa berubah). Untuk nama saat order, gunakan `productName` di OrderItem.',
+  })
+  name: any; // Tetap 'any' untuk JSON dari Prisma
 }
 
 class PaymentMethodInOrderDto {
@@ -32,9 +33,16 @@ class PaymentMethodInOrderDto {
 
   @ApiProperty()
   code: string;
+
+  // Properti config sekarang disertakan untuk konsistensi dengan data dari service.
+  @ApiPropertyOptional({
+    description:
+      'Konfigurasi spesifik metode pembayaran (misal: API keys). Tidak untuk ditampilkan di frontend.',
+  })
+  config?: any;
 }
 
-// --- REVISI 2: Sertakan data snapshot di OrderItem DTO ---
+// DTO untuk setiap item dalam pesanan
 class OrderItemInOrderDto {
   @ApiProperty()
   id: number;
@@ -44,26 +52,27 @@ class OrderItemInOrderDto {
 
   @ApiProperty({ description: 'Harga satuan produk pada saat order.' })
   price: number;
-  
+
   @ApiProperty({ description: 'Subtotal untuk item ini (price * qty).' })
   subtotal: number;
 
-  @ApiPropertyOptional({ 
+  @ApiPropertyOptional({
     description: 'Data produk saat ini. Bisa null jika produk sudah dihapus.',
-    type: ProductInOrderDto 
+    type: ProductInOrderDto,
   })
   product?: ProductInOrderDto;
 
   @ApiProperty({ description: 'Snapshot nama produk saat order dibuat.' })
-  productName: any; // Tipe any untuk JSON
+  productName: any; // Tipe 'any' untuk JSON dari Prisma
 
   @ApiProperty({ description: 'Snapshot varian produk saat order dibuat.' })
-  productVariant: any; // Tipe any untuk JSON
+  productVariant: any; // Tipe 'any' untuk JSON dari Prisma
 
-  @ApiPropertyOptional({ description: 'Snapshot URL gambar produk saat order dibuat.' })
+  @ApiPropertyOptional({
+    description: 'Snapshot URL gambar produk saat order dibuat.',
+  })
   productImage?: string;
 }
-
 
 // DTO utama untuk respons order
 export class OrderResponseDto {
@@ -97,13 +106,18 @@ export class OrderResponseDto {
   @ApiProperty({ type: UserInOrderDto })
   user: UserInOrderDto;
 
-  @ApiProperty({ type: PaymentMethodInOrderDto })
-  paymentMethod: PaymentMethodInOrderDto;
+  // --- REVISI FINAL DI SINI ---
+  // Menambahkan '?' untuk menandakan bahwa properti ini opsional.
+  // Ini menyelesaikan error "Type 'undefined' is not assignable to type 'PaymentMethodInOrderDto'".
+  // Juga mengubah decorator menjadi @ApiPropertyOptional.
+  @ApiPropertyOptional({ type: PaymentMethodInOrderDto })
+  paymentMethod?: PaymentMethodInOrderDto;
 
   @ApiProperty({ type: [OrderItemInOrderDto] })
   orderItems: OrderItemInOrderDto[];
 
-  // --- REVISI 1: Tambahkan `paymentDueDate` ---
-  @ApiPropertyOptional({ description: 'Batas waktu pembayaran untuk order ini.' })
+  @ApiPropertyOptional({
+    description: 'Batas waktu pembayaran untuk order ini.',
+  })
   paymentDueDate?: Date;
 }

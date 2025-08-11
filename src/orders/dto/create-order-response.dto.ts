@@ -1,80 +1,60 @@
-// File: src/orders/dto/create-order-response.dto.ts
-
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { OrderStatus, PaymentStatus } from '@prisma/client';
+// --- DITAMBAHKAN: Impor DTO utama dari file sumbernya ---
+import { OrderResponseDto } from './order-response.dto';
 
-// --- DTO DASAR (ASUMSI DARI KONTEKS SEBELUMNYA) ---
-// DTO ini mendefinisikan bentuk dasar dari sebuah Order.
-class UserInOrderDto { @ApiProperty() id: number; @ApiProperty() name: string; }
-class PaymentMethodInOrderDto { @ApiProperty() id: number; @ApiProperty() name: string; }
-class ProductInOrderDto { @ApiProperty() id: number; @ApiProperty() name: any; }
-class OrderItemInOrderDto {
-  @ApiProperty() id: number;
-  @ApiProperty() qty: number;
-  @ApiProperty() price: number;
-  @ApiProperty({ type: ProductInOrderDto }) product: ProductInOrderDto;
-}
+// --- DIHAPUS: Definisi DTO duplikat seperti UserInOrderDto, OrderItemInOrderDto, dan OrderResponseDto dihilangkan dari sini. ---
+// Kita akan menggunakan versi yang sudah ada di 'order-response.dto.ts'.
 
-export class OrderResponseDto {
-  @ApiProperty() id: number;
-  @ApiProperty() address: string;
-  @ApiProperty() shippingCost: number;
-  @ApiProperty() subtotal: number;
-  @ApiProperty() total: number;
-  @ApiProperty({ enum: PaymentStatus }) paymentStatus: PaymentStatus;
-  @ApiProperty({ enum: OrderStatus }) orderStatus: OrderStatus;
-  @ApiProperty() createdAt: Date;
-  @ApiProperty() updatedAt: Date;
-  @ApiProperty({ type: UserInOrderDto }) user: UserInOrderDto;
-  @ApiProperty({ type: PaymentMethodInOrderDto }) paymentMethod: PaymentMethodInOrderDto;
-  @ApiProperty({ type: [OrderItemInOrderDto] }) orderItems: OrderItemInOrderDto[];
-  
-  // --- REVISI 1: Tambahkan `paymentDueDate` di DTO dasar ---
-  @ApiPropertyOptional({ description: 'Batas waktu pembayaran untuk order ini.' })
-  paymentDueDate?: Date;
-}
-
-
-// --- DTO BARU: Untuk memperjelas struktur instruksi pembayaran manual ---
+/**
+ * DTO untuk instruksi pembayaran manual (Transfer Bank, Wise, dll.)
+ * DTO ini tetap di sini karena spesifik untuk respons pembuatan order.
+ */
 class ManualPaymentInstructionsDto {
-    @ApiProperty()
-    bank: string;
+  @ApiProperty({ example: 'Bank Central Asia' })
+  bank: string;
 
-    @ApiProperty()
-    accountHolder: string;
+  @ApiProperty({ example: 'PT. Grow Room Sejahtera' })
+  accountHolder: string;
 
-    @ApiProperty()
-    accountNumber: string;
+  @ApiProperty({ example: '8881234567' })
+  accountNumber: string;
 
-    @ApiProperty()
-    amount: number;
+  @ApiProperty({ example: 165000 })
+  amount: number;
 
-    @ApiProperty()
-    paymentDueDate: Date;
+  @ApiProperty()
+  paymentDueDate: Date;
 }
 
-
-// --- DTO UTAMA YANG DIREVISI ---
+/**
+ * DTO utama untuk respons setelah berhasil membuat pesanan baru.
+ * Mewarisi semua properti dari OrderResponseDto dan menambahkan detail pembayaran.
+ */
 export class CreateOrderResponseDto extends OrderResponseDto {
-  @ApiPropertyOptional({ 
-    description: 'Tipe pembayaran yang diproses (e.g., MANUAL, MIDTRANS, PAYPAL).', 
-    example: 'MANUAL' 
+  @ApiPropertyOptional({
+    description: 'Tipe pembayaran yang diproses (e.g., MANUAL, MIDTRANS, PAYPAL).',
+    example: 'MIDTRANS',
   })
   paymentType?: string;
 
-  @ApiPropertyOptional({ description: 'Token Snap Midtrans untuk ditampilkan di front-end.' })
+  @ApiPropertyOptional({
+    description: 'Token Snap Midtrans untuk ditampilkan di front-end (jika menggunakan Midtrans).',
+  })
   snapToken?: string;
 
-  @ApiPropertyOptional({ description: 'URL redirect pembayaran Midtrans.' })
+  @ApiPropertyOptional({
+    description: 'URL redirect pembayaran Midtrans (jika menggunakan Midtrans).',
+  })
   redirectUrl?: string;
 
-  @ApiPropertyOptional({ description: 'URL approval untuk pembayaran PayPal.' })
+  @ApiPropertyOptional({
+    description: 'URL approval untuk pembayaran PayPal (jika menggunakan PayPal).',
+  })
   approvalUrl?: string;
 
-  // --- REVISI 2: Gunakan DTO spesifik untuk `instructions` ---
-  @ApiPropertyOptional({ 
-    description: 'Instruksi untuk pembayaran manual (transfer bank atau Wise).', 
-    type: ManualPaymentInstructionsDto 
+  @ApiPropertyOptional({
+    description: 'Instruksi untuk pembayaran manual (jika menggunakan transfer bank atau Wise).',
+    type: ManualPaymentInstructionsDto,
   })
   instructions?: ManualPaymentInstructionsDto;
 }

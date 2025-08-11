@@ -1,7 +1,28 @@
-// File: src/orders/orders.controller.ts
-
-import { Controller, Get, Post, Patch, Param, Body, ParseIntPipe, UseGuards, Req, Res, Query } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth, ApiNotFoundResponse, ApiForbiddenResponse, ApiQuery } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Param,
+  Body,
+  ParseIntPipe,
+  UseGuards,
+  Req,
+  Res,
+  Query,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiBearerAuth,
+  ApiNotFoundResponse,
+  ApiForbiddenResponse,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { OrdersService } from './orders.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -13,13 +34,16 @@ import { RequestWithUser } from '../common/interfaces/request-with-user.interfac
 import { Response } from 'express';
 import { OrderResponseDto } from './dto/order-response.dto';
 import { CreateOrderResponseDto } from './dto/create-order-response.dto';
-import { Public } from '../auth/decorators/public.decorator';
 
 @ApiTags('Orders')
 @Controller('orders')
 export class OrdersController {
   constructor(private readonly service: OrdersService) {}
 
+  // --- DIHAPUS ---
+  // Endpoint webhook telah dipindahkan ke MidtransController
+  // agar tanggung jawab controller ini bersih, hanya untuk urusan 'Orders'.
+  /*
   @Public()
   @Post('webhook/payment')
   @ApiOperation({ summary: 'Endpoint untuk menerima notifikasi pembayaran (Webhook)' })
@@ -27,13 +51,18 @@ export class OrdersController {
   handlePaymentNotification(@Body() notificationPayload: any) {
     return this.service.handlePaymentNotification(notificationPayload);
   }
+  */
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.USER)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Membuat order baru (User Only)' })
-  @ApiResponse({ status: 201, description: 'Order berhasil dibuat.', type: CreateOrderResponseDto })
+  @ApiResponse({
+    status: 201,
+    description: 'Order berhasil dibuat.',
+    type: CreateOrderResponseDto,
+  })
   create(@Req() req: RequestWithUser, @Body() dto: CreateOrderDto) {
     return this.service.create(req.user.userId, dto);
   }
@@ -44,10 +73,15 @@ export class OrdersController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Mendapatkan semua order (Admin/Owner Only)' })
   @ApiResponse({ status: 200, type: [OrderResponseDto] })
-  @ApiQuery({ name: 'page', required: false, type: Number })
-  @ApiQuery({ name: 'limit', required: false, type: Number })
-  findAll(@Query('page') page: number = 1, @Query('limit') limit: number = 10) {
-    return this.service.findAll({ page, limit });
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 10 })
+  findAll(
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '10',
+  ) {
+    const pageNumber = parseInt(page, 10);
+    const limitNumber = parseInt(limit, 10);
+    return this.service.findAll({ page: pageNumber, limit: limitNumber });
   }
 
   @Get('my')
@@ -67,7 +101,10 @@ export class OrdersController {
   @ApiOperation({ summary: 'Mendapatkan detail order berdasarkan ID' })
   @ApiResponse({ status: 200, type: OrderResponseDto })
   findOne(@Req() req: RequestWithUser, @Param('id', ParseIntPipe) id: number) {
-    return this.service.findOne(id, req.user.role === Role.USER ? req.user.userId : undefined);
+    return this.service.findOne(
+      id,
+      req.user.role === Role.USER ? req.user.userId : undefined,
+    );
   }
 
   @Patch(':id')
@@ -85,23 +122,43 @@ export class OrdersController {
   @Roles(Role.OWNER, Role.ADMIN, Role.USER)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Download invoice dalam format PDF' })
-  async downloadInvoicePdf(@Req() req: RequestWithUser, @Param('id', ParseIntPipe) id: number, @Res() res: Response) {
-    const buffer = await this.service.generateInvoicePdf(id, req.user.role === Role.USER ? req.user.userId : undefined);
+  @ApiResponse({ status: 200, description: 'File PDF invoice.' })
+  async downloadInvoicePdf(
+    @Req() req: RequestWithUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Res() res: Response,
+  ) {
+    const buffer = await this.service.generateInvoicePdf(
+      id,
+      req.user.role === Role.USER ? req.user.userId : undefined,
+    );
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename=invoice-order-${id}.pdf`);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename=invoice-order-${id}.pdf`,
+    );
     res.end(buffer);
   }
 
-  // --- TAMBAHAN: Endpoint baru untuk mencoba kembali pembayaran ---
   @Post(':id/retry-payment')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.USER)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Mencoba kembali pembayaran untuk order yang berstatus PENDING' })
-  @ApiResponse({ status: 200, description: 'Proses pembayaran berhasil diinisiasi ulang.' })
+  @ApiOperation({
+    summary: 'Mencoba kembali pembayaran untuk order yang berstatus PENDING',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Proses pembayaran berhasil diinisiasi ulang.',
+  })
   @ApiNotFoundResponse({ description: 'Order tidak ditemukan.' })
-  @ApiForbiddenResponse({ description: 'Akses ditolak atau order tidak dalam status PENDING.' })
-  retryPayment(@Req() req: RequestWithUser, @Param('id', ParseIntPipe) id: number) {
+  @ApiForbiddenResponse({
+    description: 'Akses ditolak atau order tidak dalam status PENDING.',
+  })
+  retryPayment(
+    @Req() req: RequestWithUser,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
     return this.service.retryPayment(id, req.user.userId);
   }
 }
