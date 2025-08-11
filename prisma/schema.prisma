@@ -167,6 +167,7 @@ model Order {
   updatedAt       DateTime       @updatedAt
   paymentDueDate  DateTime?
   trackingNumber  String?
+  currencyCode    String        @default("IDR")
 
   @@index([userId]) // --- REVISI SINTAKS: Indeks didefinisikan di sini ---
   @@index([paymentMethodId]) // --- REVISI SINTAKS: Indeks didefinisikan di sini ---
