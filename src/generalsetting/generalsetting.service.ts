@@ -85,26 +85,4 @@ export class GeneralsettingService {
       },
     });
   }
-
-  /**
-   * Mengambil konfigurasi publik yang aman untuk diberikan ke frontend.
-   */
-  async getPublicConfig() {
-    this.logger.log('Fetching public configurations for frontend...');
-    
-    const activeMethods = await this.paymentMethodService.findAllActive();
-    const paypalMethod = activeMethods.find(method => method.code === 'paypal');
-
-    let paypalClientId = null;
-
-    if (paypalMethod && typeof paypalMethod.config === 'object' && paypalMethod.config !== null) {
-      paypalClientId = (paypalMethod.config as any).clientId || null;
-    }
-
-    if (!paypalClientId) {
-      this.logger.warn('Active PayPal payment method with a valid clientId in its config was not found.');
-    }
-
-    return { paypalClientId };
-  }
 }

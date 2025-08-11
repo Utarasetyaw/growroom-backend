@@ -23,15 +23,7 @@ import { Public } from '../auth/decorators/public.decorator';
 export class GeneralsettingController {
   constructor(private readonly service: GeneralsettingService) {}
   
-  // --- 3. TAMBAHKAN ENDPOINT BARU INI ---
-  @Public() // Tandai sebagai endpoint publik
-  @Get('public-config')
-  @ApiOperation({ summary: 'Mendapatkan konfigurasi publik untuk frontend' })
-  @ApiResponse({ status: 200, description: 'Konfigurasi publik berhasil diambil.' })
-  async getPublicConfig() {
-    return this.service.getPublicConfig();
-  }
-
+ 
   // Endpoint di bawah ini tidak perlu diubah, hanya guard-nya saja
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
