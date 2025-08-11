@@ -14,16 +14,29 @@ import { extname } from 'path';
 import { UpdateGeneralsettingDto } from './dto/update-generalsetting.dto';
 import { GeneralSettingResponseDto } from './dto/general-setting-response.dto';
 import { UpdateShippingModeDto } from './dto/update-shipping-mode.dto';
+// 1. Impor decorator @Public
+import { Public } from '../auth/decorators/public.decorator';
 
 @ApiTags('General Settings')
-@ApiBearerAuth()
-@Controller('generalsetting')
-@UseGuards(JwtAuthGuard, RolesGuard)
+// 2. Ubah path controller agar konsisten dengan panggilan frontend
+@Controller('general-settings')
 export class GeneralsettingController {
   constructor(private readonly service: GeneralsettingService) {}
+  
+  // --- 3. TAMBAHKAN ENDPOINT BARU INI ---
+  @Public() // Tandai sebagai endpoint publik
+  @Get('public-config')
+  @ApiOperation({ summary: 'Mendapatkan konfigurasi publik untuk frontend' })
+  @ApiResponse({ status: 200, description: 'Konfigurasi publik berhasil diambil.' })
+  async getPublicConfig() {
+    return this.service.getPublicConfig();
+  }
 
+  // Endpoint di bawah ini tidak perlu diubah, hanya guard-nya saja
   @Get()
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.OWNER)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Mendapatkan semua pengaturan umum (Owner Only)' })
   @ApiResponse({ status: 200, type: GeneralSettingResponseDto })
   find() {
@@ -31,7 +44,9 @@ export class GeneralsettingController {
   }
 
   @Patch()
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.OWNER)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Update pengaturan umum (termasuk upload file) (Owner Only)' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -65,7 +80,6 @@ export class GeneralsettingController {
 
     const data = { ...body, ...fileMap };
 
-    // ✅ REVISI DI SINI: Tambahkan 'aboutItems' dan 'faqs' ke dalam array.
     ['shopName', 'shopDescription', 'socialMedia', 'aboutItems', 'faqs'].forEach(field => {
       if (typeof data[field] === 'string') {
         try { 
@@ -80,7 +94,9 @@ export class GeneralsettingController {
   }
 
   @Patch('shipping-mode')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.OWNER)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Update mode kalkulasi pengiriman (Owner Only)' })
   @ApiBody({ type: UpdateShippingModeDto })
   updateShippingMode(@Body() dto: UpdateShippingModeDto) {

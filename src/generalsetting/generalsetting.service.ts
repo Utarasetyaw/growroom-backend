@@ -7,7 +7,6 @@ import { PaymentmethodService } from '../paymentmethod/paymentmethod.service';
 export class GeneralsettingService {
   private readonly logger = new Logger(GeneralsettingService.name);
 
-  // Suntikkan (Inject) PaymentmethodService di sini
   constructor(
     private prisma: PrismaService,
     private paymentMethodService: PaymentmethodService,
@@ -24,7 +23,6 @@ export class GeneralsettingService {
 
   /**
    * Mengupdate data pengaturan umum dari panel admin.
-   * Menggunakan upsert untuk menangani kasus jika data belum ada.
    */
   async update(data: any) {
     return this.prisma.generalSetting.upsert({
@@ -90,19 +88,16 @@ export class GeneralsettingService {
 
   /**
    * Mengambil konfigurasi publik yang aman untuk diberikan ke frontend.
-   * Contoh: PayPal Client ID dari database.
    */
   async getPublicConfig() {
     this.logger.log('Fetching public configurations for frontend...');
     
-    // Cari metode pembayaran PayPal yang aktif dari database
     const activeMethods = await this.paymentMethodService.findAllActive();
     const paypalMethod = activeMethods.find(method => method.code === 'paypal');
 
     let paypalClientId = null;
 
     if (paypalMethod && typeof paypalMethod.config === 'object' && paypalMethod.config !== null) {
-      // Ambil clientId dari kolom 'config' JSON di database
       paypalClientId = (paypalMethod.config as any).clientId || null;
     }
 
