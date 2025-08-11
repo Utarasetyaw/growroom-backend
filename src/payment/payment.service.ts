@@ -65,7 +65,6 @@ export class PaymentService {
 
     const payload = {
       transaction_details: {
-        // Format ini sudah benar dan menjadi "koneksi" ke webhook nanti
         order_id: `ORDER-${order.id}`,
         gross_amount: Math.round(order.total),
       },
@@ -77,6 +76,8 @@ export class PaymentService {
           order.user.name.split(' ')[0],
         email: order.user.email,
       },
+      // --- DIKEMBALIKAN SESUAI PERMINTAAN ---
+      // Pengguna akan diarahkan ke halaman profil setelah pembayaran.
       callbacks: {
         finish: `${process.env.FRONTEND_URL}/profile`,
       },
@@ -157,12 +158,15 @@ export class PaymentService {
         },
       ],
       application_context: {
+        // --- DIUBAH SESUAI PERMINTAAN ---
+        // Arahkan ke halaman profil setelah pembayaran sukses.
         return_url:
-          process.env.PAYPAL_RETURN_URL ||
-          'http://localhost:3000/payment/success',
+          `${process.env.FRONTEND_URL}/profile?payment=success` ||
+          'http://localhost:3000/profile',
+        // Arahkan kembali ke keranjang jika dibatalkan.
         cancel_url:
-          process.env.PAYPAL_CANCEL_URL ||
-          'http://localhost:3000/payment/cancel',
+          `${process.env.FRONTEND_URL}/cart?payment=cancelled` ||
+          'http://localhost:3000/cart',
         brand_name: 'Your Shop Name',
         shipping_preference: 'NO_SHIPPING',
       },

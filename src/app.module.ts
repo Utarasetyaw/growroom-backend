@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { ScheduleModule } from '@nestjs/schedule'; // 👈 Tambahkan impor ini
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -26,13 +26,14 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { UserFrontendModule } from './user_frontend/user_frontend.module';
 import { CartModule } from './cart/cart.module';
 import { MidtransModule } from './midtrans/midtrans.module';
+import { PaypalModule } from './paypal/paypal.module'; 
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
     }),
-    ScheduleModule.forRoot(), // 👈 Daftarkan di sini
+    ScheduleModule.forRoot(),
     PrismaModule, 
     UsersModule, 
     AuthModule, 
@@ -56,6 +57,7 @@ import { MidtransModule } from './midtrans/midtrans.module';
     UserFrontendModule, 
     CartModule,
     MidtransModule,
+    PaypalModule,
   ],
   controllers: [AppController],
   providers: [AppService],
