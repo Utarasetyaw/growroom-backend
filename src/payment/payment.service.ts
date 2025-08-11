@@ -78,7 +78,7 @@ export class PaymentService {
         email: order.user.email,
       },
       callbacks: {
-        finish: `${process.env.FRONTEND_URL}/orders/${order.id}`,
+        finish: `${process.env.FRONTEND_URL}/profile`,
       },
     };
 
