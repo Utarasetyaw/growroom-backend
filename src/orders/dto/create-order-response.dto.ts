@@ -1,60 +1,121 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-// --- DITAMBAHKAN: Impor DTO utama dari file sumbernya ---
-import { OrderResponseDto } from './order-response.dto';
+import { OrderStatus, PaymentStatus } from '@prisma/client';
 
-// --- DIHAPUS: Definisi DTO duplikat seperti UserInOrderDto, OrderItemInOrderDto, dan OrderResponseDto dihilangkan dari sini. ---
-// Kita akan menggunakan versi yang sudah ada di 'order-response.dto.ts'.
-
-/**
- * DTO untuk instruksi pembayaran manual (Transfer Bank, Wise, dll.)
- * DTO ini tetap di sini karena spesifik untuk respons pembuatan order.
- */
-class ManualPaymentInstructionsDto {
-  @ApiProperty({ example: 'Bank Central Asia' })
-  bank: string;
-
-  @ApiProperty({ example: 'PT. Grow Room Sejahtera' })
-  accountHolder: string;
-
-  @ApiProperty({ example: '8881234567' })
-  accountNumber: string;
-
-  @ApiProperty({ example: 165000 })
-  amount: number;
+// DTO parsial untuk data yang berulang
+class UserInOrderDto {
+  @ApiProperty()
+  id: number;
 
   @ApiProperty()
-  paymentDueDate: Date;
+  name: string;
+
+  @ApiProperty()
+  email: string;
 }
 
-/**
- * DTO utama untuk respons setelah berhasil membuat pesanan baru.
- * Mewarisi semua properti dari OrderResponseDto dan menambahkan detail pembayaran.
- */
-export class CreateOrderResponseDto extends OrderResponseDto {
-  @ApiPropertyOptional({
-    description: 'Tipe pembayaran yang diproses (e.g., MANUAL, MIDTRANS, PAYPAL).',
-    example: 'MIDTRANS',
+class ProductInOrderDto {
+  @ApiProperty()
+  id: number;
+
+  @ApiProperty({
+    description:
+      'Nama produk saat ini (bisa berubah). Untuk nama saat order, gunakan `productName` di OrderItem.',
   })
-  paymentType?: string;
+  name: any; // Tetap 'any' untuk JSON dari Prisma
+}
+
+class PaymentMethodInOrderDto {
+  @ApiProperty()
+  id: number;
+
+  @ApiProperty()
+  name: string;
+
+  @ApiProperty()
+  code: string;
 
   @ApiPropertyOptional({
-    description: 'Token Snap Midtrans untuk ditampilkan di front-end (jika menggunakan Midtrans).',
+    description:
+      'Konfigurasi spesifik metode pembayaran (misal: API keys). Tidak untuk ditampilkan di frontend.',
   })
-  snapToken?: string;
+  config?: any;
+}
+
+// DTO untuk setiap item dalam pesanan
+class OrderItemInOrderDto {
+  @ApiProperty()
+  id: number;
+
+  @ApiProperty()
+  qty: number;
+
+  @ApiProperty({ description: 'Harga satuan produk pada saat order.' })
+  price: number;
+
+  @ApiProperty({ description: 'Subtotal untuk item ini (price * qty).' })
+  subtotal: number;
 
   @ApiPropertyOptional({
-    description: 'URL redirect pembayaran Midtrans (jika menggunakan Midtrans).',
+    description: 'Data produk saat ini. Bisa null jika produk sudah dihapus.',
+    type: ProductInOrderDto,
   })
-  redirectUrl?: string;
+  product?: ProductInOrderDto;
+
+  @ApiProperty({ description: 'Snapshot nama produk saat order dibuat.' })
+  productName: any; // Tipe 'any' untuk JSON dari Prisma
+
+  @ApiProperty({ description: 'Snapshot varian produk saat order dibuat.' })
+  productVariant: any; // Tipe 'any' untuk JSON dari Prisma
 
   @ApiPropertyOptional({
-    description: 'URL approval untuk pembayaran PayPal (jika menggunakan PayPal).',
+    description: 'Snapshot URL gambar produk saat order dibuat.',
   })
-  approvalUrl?: string;
+  productImage?: string;
+}
+
+// DTO utama untuk respons order
+export class OrderResponseDto {
+  @ApiProperty()
+  id: number;
+
+  @ApiProperty()
+  address: string;
+
+  @ApiProperty()
+  shippingCost: number;
+
+  @ApiProperty()
+  subtotal: number;
+
+  @ApiProperty()
+  total: number;
+  
+  @ApiProperty({ description: 'Kode mata uang yang digunakan untuk pesanan ini (e.g., "IDR", "USD").', example: 'IDR' })
+  currencyCode: string;
+
+  @ApiProperty({ enum: PaymentStatus })
+  paymentStatus: PaymentStatus;
+
+  @ApiProperty({ enum: OrderStatus })
+  orderStatus: OrderStatus;
+
+  @ApiProperty()
+  createdAt: Date;
+
+  @ApiProperty()
+  updatedAt: Date;
+
+  @ApiProperty({ type: UserInOrderDto })
+  user: UserInOrderDto;
+
+  @ApiPropertyOptional({ type: PaymentMethodInOrderDto })
+  paymentMethod?: PaymentMethodInOrderDto;
+
+  @ApiProperty({ type: [OrderItemInOrderDto] })
+  orderItems: OrderItemInOrderDto[];
 
   @ApiPropertyOptional({
-    description: 'Instruksi untuk pembayaran manual (jika menggunakan transfer bank atau Wise).',
-    type: ManualPaymentInstructionsDto,
+    description: 'Batas waktu pembayaran untuk order ini.',
   })
-  instructions?: ManualPaymentInstructionsDto;
+  paymentDueDate?: Date;
 }

@@ -19,13 +19,12 @@ export class UpdateOrderDto {
   @IsEnum(OrderStatus)
   orderStatus?: OrderStatus;
 
-  // --- TAMBAHAN: Field untuk nomor resi pengiriman ---
   @ApiPropertyOptional({
     description: 'Nomor resi pengiriman. Biasanya diisi saat status diubah menjadi SHIPPING.',
     example: 'JN1234567890',
   })
   @IsOptional()
   @IsString()
-  @IsNotEmpty() // Jika field ini dikirim, nilainya tidak boleh string kosong
+  @IsNotEmpty()
   trackingNumber?: string;
 }

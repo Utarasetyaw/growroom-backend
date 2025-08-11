@@ -34,10 +34,9 @@ class PaymentMethodInOrderDto {
   @ApiProperty()
   code: string;
 
-  // Properti config sekarang disertakan untuk konsistensi dengan data dari service.
   @ApiPropertyOptional({
     description:
-      'Konfigurasi spesifik metode pembayaran (misal: API keys). Tidak untuk ditampilkan di frontend.',
+      'Konfigurasi spesifik metode pembayaran (misal: API keys). Tidak untuk ditampilkan di frontend. [isPrivate]',
   })
   config?: any;
 }
@@ -90,6 +89,10 @@ export class OrderResponseDto {
 
   @ApiProperty()
   total: number;
+  
+  // --- DITAMBAHKAN ---
+  @ApiProperty({ description: 'Kode mata uang yang digunakan untuk pesanan ini (e.g., "IDR", "USD").', example: 'IDR' })
+  currencyCode: string;
 
   @ApiProperty({ enum: PaymentStatus })
   paymentStatus: PaymentStatus;
@@ -106,10 +109,6 @@ export class OrderResponseDto {
   @ApiProperty({ type: UserInOrderDto })
   user: UserInOrderDto;
 
-  // --- REVISI FINAL DI SINI ---
-  // Menambahkan '?' untuk menandakan bahwa properti ini opsional.
-  // Ini menyelesaikan error "Type 'undefined' is not assignable to type 'PaymentMethodInOrderDto'".
-  // Juga mengubah decorator menjadi @ApiPropertyOptional.
   @ApiPropertyOptional({ type: PaymentMethodInOrderDto })
   paymentMethod?: PaymentMethodInOrderDto;
 

@@ -10,14 +10,11 @@ import {
   Req,
   Res,
   Query,
-  HttpCode,
-  HttpStatus,
 } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
   ApiResponse,
-  ApiParam,
   ApiBearerAuth,
   ApiNotFoundResponse,
   ApiForbiddenResponse,
@@ -33,25 +30,12 @@ import { UpdateOrderDto } from './dto/update-order.dto';
 import { RequestWithUser } from '../common/interfaces/request-with-user.interface';
 import { Response } from 'express';
 import { OrderResponseDto } from './dto/order-response.dto';
-import { CreateOrderResponseDto } from './dto/create-order-response.dto';
+import { OrderResponseDto as CreateOrderResponseDto } from './dto/create-order-response.dto';
 
 @ApiTags('Orders')
 @Controller('orders')
 export class OrdersController {
   constructor(private readonly service: OrdersService) {}
-
-  // --- DIHAPUS ---
-  // Endpoint webhook telah dipindahkan ke MidtransController
-  // agar tanggung jawab controller ini bersih, hanya untuk urusan 'Orders'.
-  /*
-  @Public()
-  @Post('webhook/payment')
-  @ApiOperation({ summary: 'Endpoint untuk menerima notifikasi pembayaran (Webhook)' })
-  @ApiResponse({ status: 200, description: 'Notifikasi berhasil diproses.' })
-  handlePaymentNotification(@Body() notificationPayload: any) {
-    return this.service.handlePaymentNotification(notificationPayload);
-  }
-  */
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)

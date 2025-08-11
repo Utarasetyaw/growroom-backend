@@ -29,6 +29,7 @@ const mapOrderToDto = (order: OrderWithDetails | null): OrderResponseDto | null 
   if (!order) return null;
   return {
     ...order,
+    currencyCode: order.currencyCode,
     paymentDueDate: order.paymentDueDate ?? undefined,
     orderItems: order.orderItems.map((item) => ({
       ...item,
@@ -41,7 +42,7 @@ const mapOrderToDto = (order: OrderWithDetails | null): OrderResponseDto | null 
             name: item.product.name,
           }
         : {
-            id: item.productId ?? 0, // Provide a default value if productId is null
+            id: item.productId ?? 0,
             name: item.productName,
           },
     })),
@@ -155,6 +156,7 @@ export class OrdersService {
           orderStatus: 'PROCESSING',
           paymentMethodId,
           paymentDueDate,
+          currencyCode: dto.currencyCode, // <-- Perbaikan penting
           orderItems: {
             create: orderItems.map((item) => {
               const product = productMap.get(item.productId);
@@ -188,7 +190,8 @@ export class OrdersService {
 
     const { order, paymentMethod } = transactionResult;
 
-    this._sendTelegramNotification(order);
+    // Send notification with the complete order object that includes user, paymentMethod and orderItems
+    await this._sendTelegramNotification(order);
 
     const mappedOrder = mapOrderToDto(order);
     if (!mappedOrder || !mappedOrder.paymentMethod) {
@@ -260,7 +263,8 @@ export class OrdersService {
       return;
     }
 
-    const totalFormatted = order.total.toLocaleString('id-ID', { style: 'currency', currency: 'IDR' });
+    // Menggunakan currencyCode dari order untuk format yang benar
+    const totalFormatted = order.total.toLocaleString('id-ID', { style: 'currency', currency: order.currencyCode });
     const itemsText = order.orderItems.map((item, idx) => {
         const name = (item.productName as any)?.id || (item.productName as any)?.en || 'N/A';
         const price = item.price.toLocaleString('id-ID');
@@ -424,11 +428,11 @@ export class OrdersService {
         'Product Deleted';
       doc.text(name, 50, itemY, { width: 240 });
       doc.text(item.qty.toString(), 300, itemY);
-      doc.text(item.price.toLocaleString('id-ID'), 370, itemY, {
+      doc.text(item.price.toLocaleString('id-ID', { style: 'currency', currency: order.currencyCode }), 370, itemY, {
         width: 90,
         align: 'right',
       });
-      doc.text(item.subtotal.toLocaleString('id-ID'), 460, itemY, {
+      doc.text(item.subtotal.toLocaleString('id-ID', { style: 'currency', currency: order.currencyCode }), 460, itemY, {
         width: 90,
         align: 'right',
       });
@@ -439,14 +443,14 @@ export class OrdersService {
 
     let summaryY = doc.y;
     doc.text('Subtotal', 370, summaryY, { width: 90 });
-    doc.text(`Rp${order.subtotal.toLocaleString('id-ID')}`, 460, summaryY, {
+    doc.text(order.subtotal.toLocaleString('id-ID', { style: 'currency', currency: order.currencyCode }), 460, summaryY, {
       width: 90,
       align: 'right',
     });
     summaryY += 15;
     doc.text('Shipping', 370, summaryY, { width: 90 });
     doc.text(
-      `Rp${order.shippingCost.toLocaleString('id-ID')}`,
+      order.shippingCost.toLocaleString('id-ID', { style: 'currency', currency: order.currencyCode }),
       460,
       summaryY,
       { width: 90, align: 'right' },
@@ -455,7 +459,7 @@ export class OrdersService {
 
     doc.font('Helvetica-Bold');
     doc.text('TOTAL', 370, summaryY, { width: 90 });
-    doc.text(`Rp${order.total.toLocaleString('id-ID')}`, 460, summaryY, {
+    doc.text(order.total.toLocaleString('id-ID', { style: 'currency', currency: order.currencyCode }), 460, summaryY, {
       width: 90,
       align: 'right',
     });
@@ -534,7 +538,10 @@ export class OrdersService {
           'PayPal payment method config is missing or invalid.',
         );
       }
-      const currencyCode = 'IDR'; // Asumsi, bisa diambil dari order jika ada
+      
+      // --- Perbaikan penting ---
+      const currencyCode = order.currencyCode;
+
       const paypalData =
         await this.paymentService.createPaypalTransaction(
           mappedOrder as OrderResponseDto,
