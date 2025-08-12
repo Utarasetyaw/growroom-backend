@@ -196,7 +196,8 @@ export class OrdersService {
 
     return mappedOrder;
   }
-
+  
+  // Sisa file tidak perlu diubah
   private async _sendTelegramNotification(order: OrderWithDetails): Promise<void> {
     this.logger.log(`[Telegram] Memulai proses notifikasi untuk Order #${order.id}...`);
     const setting = await this.prisma.generalSetting.findUnique({ where: { id: 1 } });
