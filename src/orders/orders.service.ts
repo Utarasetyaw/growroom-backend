@@ -189,10 +189,9 @@ export class OrdersService {
     }
 
     if (paymentMethod.code === 'paypal') {
-      const paypalData = await this.paypalService.createRedirectTransaction(
-        mappedOrder as OrderResponseDto,
-      );
-      return { ...mappedOrder, paymentType: 'PAYPAL_REDIRECT', ...paypalData };
+      // Untuk alur Card Fields, kita tidak membuat transaksi di sini.
+      // Cukup kembalikan data order agar frontend bisa membuka modal pembayaran.
+      return { ...mappedOrder, paymentType: 'PAYPAL' };
     }
     
     if (['bank_transfer', 'wise'].includes(paymentMethod.code)) {
@@ -353,6 +352,7 @@ export class OrdersService {
     }
 
     if (mappedOrder.paymentMethod.code === 'paypal') {
+      // Untuk retry, kita tetap gunakan alur redirect karena lebih sederhana dari halaman profil.
       const paypalData = await this.paypalService.createRedirectTransaction(
         mappedOrder as OrderResponseDto,
       );
