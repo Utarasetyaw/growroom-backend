@@ -151,26 +151,27 @@ model PaymentMethod {
 }
 
 model Order {
-  id              Int            @id @default(autoincrement())
-  user            User           @relation(fields: [userId], references: [id])
+  id              Int           @id @default(autoincrement())
+  user            User          @relation(fields: [userId], references: [id])
   userId          Int
   address         String
   shippingCost    Float
   subtotal        Float
   total           Float
-  paymentStatus   PaymentStatus  @default(PENDING)
-  orderStatus     OrderStatus    @default(PROCESSING)
+  paymentStatus   PaymentStatus @default(PENDING)
+  orderStatus     OrderStatus   @default(PROCESSING)
   paymentMethod   PaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
   paymentMethodId Int?
   orderItems      OrderItem[]
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
   paymentDueDate  DateTime?
   trackingNumber  String?
   currencyCode    String        @default("IDR")
+  paymentDetails  Json?         // <-- INI DIA BARIS YANG DITAMBAHKAN
 
-  @@index([userId]) // --- REVISI SINTAKS: Indeks didefinisikan di sini ---
-  @@index([paymentMethodId]) // --- REVISI SINTAKS: Indeks didefinisikan di sini ---
+  @@index([userId])
+  @@index([paymentMethodId])
 }
 
 model OrderItem {

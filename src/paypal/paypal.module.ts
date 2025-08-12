@@ -5,7 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { OrdersModule } from '../orders/orders.module'; // 1. Impor OrdersModule
 
 @Module({
-  imports: [OrdersModule], // 2. Daftarkan OrdersModule di sini
+  imports: [OrdersModule], // 2. Daftarkan OrdersModule di sini agar servicenya bisa di-inject
   controllers: [PaypalController],
   providers: [PaypalService, PrismaService],
 })
