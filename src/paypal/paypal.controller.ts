@@ -1,3 +1,5 @@
+// src/paypal/paypal.controller.ts
+
 import {
   Controller,
   Post,
@@ -36,8 +38,11 @@ export class PaypalController {
     // Teruskan userId ke service untuk validasi kepemilikan order
     const paypalOrder = await this.paypalService.createOrder(internalOrderId, userId);
     
-    // Kirim kembali ID order dari PayPal ke frontend
-    return { id: paypalOrder.id };
+    // ================== PERBAIKAN DI SINI ==================
+    // Kembalikan seluruh objek 'paypalOrder' yang diterima dari service.
+    // Ini penting agar frontend mendapatkan semua data yang dibutuhkan (id, status, links).
+    return paypalOrder;
+    // =====================================================
   }
 
   @Post('orders/:paypalOrderId/capture')
@@ -47,7 +52,7 @@ export class PaypalController {
   @ApiResponse({ status: 201, description: 'Payment captured successfully.'})
   async captureOrder(@Param('paypalOrderId') paypalOrderId: string) {
     // Untuk capture, tidak perlu validasi user karena menggunakan ID unik dari PayPal
-    // yang hanya didapat setelah createOrder berhasil.
+    // yang hanya didapat setelah createOrder berhasil. Fungsi ini sudah benar.
     return this.paypalService.captureOrder(paypalOrderId);
   }
 
@@ -56,6 +61,7 @@ export class PaypalController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Menerima notifikasi webhook dari PayPal' })
   handleWebhook(@Headers() headers: any, @Body() body: any) {
+    // Fungsi ini sudah benar.
     return this.paypalService.handleWebhook(headers, body);
   }
 }
