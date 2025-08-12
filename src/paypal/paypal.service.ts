@@ -4,6 +4,8 @@ import {
   InternalServerErrorException,
   NotFoundException,
   BadRequestException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as paypal from '@paypal/checkout-server-sdk';
@@ -20,6 +22,7 @@ export class PaypalService {
 
   constructor(
     private prisma: PrismaService,
+    @Inject(forwardRef(() => OrdersService))
     private ordersService: OrdersService,
   ) {}
 
@@ -50,8 +53,6 @@ export class PaypalService {
 
   /**
    * [Alur Card Fields] Membuat Order di sisi PayPal.
-   * @param internalOrderId - ID order dari database internal kita.
-   * @param userId - ID pengguna yang login untuk validasi kepemilikan.
    */
   async createOrder(internalOrderId: number, userId: number) {
     this.logger.log(`[PayPal Card Fields] User #${userId} is attempting to create order for internal order #${internalOrderId}`);

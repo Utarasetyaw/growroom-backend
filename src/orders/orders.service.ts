@@ -5,6 +5,8 @@ import {
   NotFoundException,
   InternalServerErrorException,
   Logger,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -15,7 +17,6 @@ import * as PDFDocument from 'pdfkit';
 import { OrderStatus, PaymentStatus, Prisma } from '@prisma/client';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { OrderResponseDto } from './dto/order-response.dto';
-// --- 1. Impor Service Baru ---
 import { MidtransService } from '../midtrans/midtrans.service';
 import { PaypalService } from '../paypal/paypal.service';
 
@@ -66,16 +67,15 @@ const mapOrderToDto = (order: OrderWithDetails | null): OrderResponseDto | null 
 export class OrdersService {
   private readonly logger = new Logger(OrdersService.name);
 
-  // --- 2. Ganti Dependency Injection di Constructor ---
   constructor(
     private prisma: PrismaService,
     private cartService: CartService,
-    private midtransService: MidtransService, // Hapus PaymentService
-    private paypalService: PaypalService,   // Tambahkan service baru
+    private midtransService: MidtransService,
+    @Inject(forwardRef(() => PaypalService))
+    private paypalService: PaypalService,
   ) {}
 
   async create(userId: number, dto: CreateOrderDto) {
-    // ... (Logika awal untuk membuat data order di DB tidak berubah)
     const {
       orderItems,
       paymentMethodId,
@@ -181,7 +181,6 @@ export class OrdersService {
       throw new InternalServerErrorException('Failed to map created order or its payment method.');
     }
 
-    // --- 3. Ganti Logika Pemanggilan Service Pembayaran ---
     if (paymentMethod.code === 'midtrans') {
       const snap = await this.midtransService.createSnapTransaction(
         mappedOrder as OrderResponseDto,
@@ -190,7 +189,6 @@ export class OrdersService {
     }
 
     if (paymentMethod.code === 'paypal') {
-      // NOTE: Ini untuk alur redirect standar (tombol bayar PayPal)
       const paypalData = await this.paypalService.createRedirectTransaction(
         mappedOrder as OrderResponseDto,
       );
@@ -206,7 +204,6 @@ export class OrdersService {
     return mappedOrder;
   }
 
-  // ... (Method _sendTelegramNotification, findAll, findUserOrders, update, generateInvoicePdf tidak berubah)
   private async _sendTelegramNotification(order: OrderWithDetails): Promise<void> {
     this.logger.log(`[Telegram] Memulai proses notifikasi untuk Order #${order.id}...`);
     const setting = await this.prisma.generalSetting.findUnique({ where: { id: 1 } });
@@ -348,7 +345,6 @@ export class OrdersService {
       throw new InternalServerErrorException('Failed to map order data or its payment method.');
     }
 
-    // --- 4. Ganti Logika Pemanggilan Service Pembayaran ---
     if (mappedOrder.paymentMethod.code === 'midtrans') {
       const snap = await this.midtransService.createSnapTransaction(
         mappedOrder as OrderResponseDto,
