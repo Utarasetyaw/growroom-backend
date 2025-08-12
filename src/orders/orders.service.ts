@@ -1,3 +1,5 @@
+// src/orders/orders.service.ts
+
 import {
   Injectable,
   BadRequestException,
@@ -28,9 +30,11 @@ type OrderWithDetails = Prisma.OrderGetPayload<{
   };
 }>;
 
+// Fungsi mapOrderToDto tidak perlu diubah
 const mapOrderToDto = (order: OrderWithDetails | null): OrderResponseDto | null => {
   if (!order) return null;
   return {
+    // ... isinya tetap sama
     ...order,
     currencyCode: order.currencyCode,
     paymentDueDate: order.paymentDueDate ?? undefined,
@@ -40,20 +44,14 @@ const mapOrderToDto = (order: OrderWithDetails | null): OrderResponseDto | null 
       productVariant: item.productVariant,
       productImage: item.productImage ?? undefined,
       product: item.product
-        ? {
-            id: item.product.id,
-            name: item.product.name,
-          }
-        : {
-            id: item.productId ?? 0,
-            name: item.productName,
-          },
+        ? { id: item.product.id, name: item.product.name }
+        : { id: item.productId ?? 0, name: item.productName },
     })),
     paymentMethod: order.paymentMethod ? {
       id: order.paymentMethod.id,
       name: order.paymentMethod.name,
       code: order.paymentMethod.code,
-      config: order.paymentMethod.config,
+      // PENTING: Kita tidak lagi mengirim 'config' yang berisi secret key ke frontend
     } : undefined,
     user: {
       id: order.user.id,
@@ -76,12 +74,7 @@ export class OrdersService {
   ) {}
 
   async create(userId: number, dto: CreateOrderDto) {
-    const {
-      orderItems,
-      paymentMethodId,
-      shippingRateId,
-      address,
-    } = dto;
+    const { orderItems, paymentMethodId, shippingRateId, address } = dto;
     if (!orderItems || orderItems.length === 0) {
       throw new BadRequestException('Order items cannot be empty.');
     }
@@ -177,22 +170,29 @@ export class OrdersService {
     const { order, paymentMethod } = transactionResult;
     await this._sendTelegramNotification(order);
     const mappedOrder = mapOrderToDto(order);
+
     if (!mappedOrder || !mappedOrder.paymentMethod) {
       throw new InternalServerErrorException('Failed to map created order or its payment method.');
     }
 
     if (paymentMethod.code === 'midtrans') {
-      const snap = await this.midtransService.createSnapTransaction(
-        mappedOrder as OrderResponseDto,
-      );
-      return { ...mappedOrder, paymentType: 'MIDTRANS', ...snap };
+      const snap = await this.midtransService.createSnapTransaction(mappedOrder as OrderResponseDto);
+      return { ...mappedOrder, paymentType: 'MIDTRANS', redirectUrl: snap.redirectUrl };
     }
 
+    // ================== PERUBAHAN LOGIKA PAYPAL ==================
     if (paymentMethod.code === 'paypal') {
-      // Untuk alur Card Fields, kita tidak membuat transaksi di sini.
-      // Cukup kembalikan data order agar frontend bisa membuka modal pembayaran.
-      return { ...mappedOrder, paymentType: 'PAYPAL' };
+      // Panggil service PayPal untuk membuat transaksi dan mendapatkan link redirect
+      const paypalTransaction = await this.paypalService.createRedirectTransaction(mappedOrder as OrderResponseDto);
+      
+      // Kembalikan approvalUrl ke frontend
+      return { 
+        ...mappedOrder, 
+        paymentType: 'PAYPAL_REDIRECT', 
+        approvalUrl: paypalTransaction.approvalUrl 
+      };
     }
+    // =============================================================
     
     if (['bank_transfer', 'wise'].includes(paymentMethod.code)) {
       const configObject = typeof paymentMethod.config === 'object' && paymentMethod.config !== null ? paymentMethod.config : {};
@@ -202,7 +202,11 @@ export class OrdersService {
 
     return mappedOrder;
   }
-
+  
+  // Semua fungsi lain di bawah ini (findAll, findOne, update, dll.) tidak perlu diubah.
+  // ...
+  // ... (Sisa kode Anda tetap sama)
+  
   private async _sendTelegramNotification(order: OrderWithDetails): Promise<void> {
     this.logger.log(`[Telegram] Memulai proses notifikasi untuk Order #${order.id}...`);
     const setting = await this.prisma.generalSetting.findUnique({ where: { id: 1 } });
@@ -213,7 +217,7 @@ export class OrdersService {
     const totalFormatted = order.total.toLocaleString('id-ID', { style: 'currency', currency: order.currencyCode });
     const dashboardUrl = `${process.env.DASHBOARD_URL || 'http://localhost:3000'}/orders/${order.id}`;
     const text = `
-� *Pesanan Baru Diterima: #${order.id}*
+ *Pesanan Baru Diterima: #${order.id}*
 *Pelanggan:* ${order.user.name} (\`${order.user.email}\`)
 *Total:* *${totalFormatted}*
 *Metode:* ${order.paymentMethod?.name || 'N/A'}
@@ -343,18 +347,16 @@ export class OrdersService {
     if (!mappedOrder || !mappedOrder.paymentMethod) {
       throw new InternalServerErrorException('Failed to map order data or its payment method.');
     }
-
+    
+    // Alur retry payment juga diubah untuk mengikuti logika redirect
     if (mappedOrder.paymentMethod.code === 'midtrans') {
-      const snap = await this.midtransService.createSnapTransaction(
-        mappedOrder as OrderResponseDto,
-      );
-      return { paymentType: 'MIDTRANS', ...snap };
+      const snap = await this.midtransService.createSnapTransaction(mappedOrder as OrderResponseDto);
+      return { paymentType: 'MIDTRANS', redirectUrl: snap.redirectUrl };
     }
 
     if (mappedOrder.paymentMethod.code === 'paypal') {
-      // Untuk retry dari halaman profil, kita juga hanya mengembalikan data order
-      // agar frontend bisa membuka modal Card Fields.
-      return { ...mappedOrder, paymentType: 'PAYPAL' };
+      const paypalTransaction = await this.paypalService.createRedirectTransaction(mappedOrder as OrderResponseDto);
+      return { ...mappedOrder, paymentType: 'PAYPAL_REDIRECT', approvalUrl: paypalTransaction.approvalUrl };
     }
 
     if (['bank_transfer', 'wise'].includes(mappedOrder.paymentMethod.code)) {
