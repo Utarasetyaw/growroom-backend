@@ -1,3 +1,5 @@
+// src/paypal/paypal.service.ts
+
 import {
   Injectable,
   Logger,
@@ -9,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as paypal from '@paypal/checkout-server-sdk';
-import { PaymentStatus } from '@prisma/client';
+import { PaymentStatus, OrderStatus, Prisma } from '@prisma/client';
 import { OrdersService } from '../orders/orders.service';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
@@ -22,6 +24,7 @@ export class PaypalService {
 
   constructor(
     private prisma: PrismaService,
+    // Menggunakan forwardRef untuk menghindari circular dependency dengan OrdersService
     @Inject(forwardRef(() => OrdersService))
     private ordersService: OrdersService,
   ) {}
@@ -61,7 +64,6 @@ export class PaypalService {
     if (!order) {
       throw new NotFoundException(`Order #${internalOrderId} not found.`);
     }
-
     if (order.paymentStatus === 'PAID') {
       throw new BadRequestException(`Order #${internalOrderId} has already been paid.`);
     }
@@ -105,19 +107,22 @@ export class PaypalService {
     try {
       const response = await client.execute(request);
       this.logger.log(`[PayPal Card Fields] Payment captured successfully for PayPal order: ${paypalOrderId}`);
-      const internalOrderIdString = response.result.purchase_units[0].reference_id.replace('ORDER-', '');
-      const internalOrderId = parseInt(internalOrderIdString, 10);
+      const purchaseUnit = response.result.purchase_units?.[0];
+      const internalOrderIdString = purchaseUnit?.reference_id?.replace('ORDER-', '');
+      const internalOrderId = internalOrderIdString ? parseInt(internalOrderIdString, 10) : NaN;
 
       if (!isNaN(internalOrderId)) {
         await this.prisma.order.update({
           where: { id: internalOrderId },
           data: {
             paymentStatus: PaymentStatus.PAID,
+            orderStatus: OrderStatus.PROCESSING,
             paymentDetails: {
               paypalOrderId: response.result.id,
-              captureId: response.result.purchase_units[0].payments.captures[0].id,
+              captureId: purchaseUnit?.payments?.captures?.[0]?.id,
               status: response.result.status,
-            },
+              payer: response.result.payer,
+            } as unknown as Prisma.InputJsonValue,
           },
         });
         this.logger.log(`[DB] Internal order #${internalOrderId} status updated to PAID.`);
@@ -227,7 +232,7 @@ export class PaypalService {
     const { event_type: eventType, resource } = webhookDto;
 
     if (eventType === 'PAYMENT.CAPTURE.COMPLETED') {
-      const referenceId = resource.purchase_units[0]?.reference_id;
+      const referenceId = resource.purchase_units?.[0]?.reference_id;
       if (!referenceId) {
         this.logger.warn('[PayPal Webhook] Event missing reference_id. Ignoring.');
         return { status: 'ignored' };
@@ -247,7 +252,7 @@ export class PaypalService {
             paypalOrderId: resource.id,
             status: resource.status,
             payer: (resource as any).payer,
-          },
+          } as unknown as Prisma.InputJsonValue,
         },
       });
       this.logger.log(`[PayPal Webhook] Updated internal order #${internalOrderId} to PAID.`);
