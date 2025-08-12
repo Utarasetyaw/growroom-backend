@@ -213,7 +213,7 @@ export class OrdersService {
     const totalFormatted = order.total.toLocaleString('id-ID', { style: 'currency', currency: order.currencyCode });
     const dashboardUrl = `${process.env.DASHBOARD_URL || 'http://localhost:3000'}/orders/${order.id}`;
     const text = `
-🛒 *Pesanan Baru Diterima: #${order.id}*
+� *Pesanan Baru Diterima: #${order.id}*
 *Pelanggan:* ${order.user.name} (\`${order.user.email}\`)
 *Total:* *${totalFormatted}*
 *Metode:* ${order.paymentMethod?.name || 'N/A'}
@@ -352,11 +352,9 @@ export class OrdersService {
     }
 
     if (mappedOrder.paymentMethod.code === 'paypal') {
-      // Untuk retry, kita tetap gunakan alur redirect karena lebih sederhana dari halaman profil.
-      const paypalData = await this.paypalService.createRedirectTransaction(
-        mappedOrder as OrderResponseDto,
-      );
-      return { paymentType: 'PAYPAL_REDIRECT', ...paypalData };
+      // Untuk retry dari halaman profil, kita juga hanya mengembalikan data order
+      // agar frontend bisa membuka modal Card Fields.
+      return { ...mappedOrder, paymentType: 'PAYPAL' };
     }
 
     if (['bank_transfer', 'wise'].includes(mappedOrder.paymentMethod.code)) {
