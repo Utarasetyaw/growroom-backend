@@ -49,7 +49,8 @@ const mapOrderToDto = (order: OrderWithDetails | null): OrderResponseDto | null 
       id: order.paymentMethod.id,
       name: order.paymentMethod.name,
       code: order.paymentMethod.code,
-      // PENTING: Kita sengaja tidak mengirim 'config' yang berisi secret key ke frontend
+      // Mengirim config ke frontend diperlukan untuk clientId pada alur Card Fields
+      config: order.paymentMethod.config,
     } : undefined,
     user: {
       id: order.user.id,
@@ -178,14 +179,14 @@ export class OrdersService {
       return { ...mappedOrder, paymentType: 'MIDTRANS', redirectUrl: snap.redirectUrl };
     }
 
+    // ================== PERBAIKAN LOGIKA PAYPAL ==================
     if (paymentMethod.code === 'paypal') {
-      const paypalTransaction = await this.paypalService.createRedirectTransaction(mappedOrder as OrderResponseDto);
-      return { 
-        ...mappedOrder, 
-        paymentType: 'PAYPAL_REDIRECT', 
-        approvalUrl: paypalTransaction.approvalUrl 
-      };
+      // Untuk alur Card Fields, kita TIDAK membuat transaksi PayPal di sini.
+      // Cukup kembalikan data order internal. Frontend akan memanggil endpoint
+      // /paypal/create-order secara terpisah setelah menerima respons ini.
+      return { ...mappedOrder, paymentType: 'PAYPAL_CARD_FIELDS' };
     }
+    // =============================================================
     
     if (['bank_transfer', 'wise'].includes(paymentMethod.code)) {
       const configObject = typeof paymentMethod.config === 'object' && paymentMethod.config !== null ? paymentMethod.config : {};
@@ -343,8 +344,9 @@ export class OrdersService {
     }
 
     if (mappedOrder.paymentMethod.code === 'paypal') {
-      const paypalTransaction = await this.paypalService.createRedirectTransaction(mappedOrder as OrderResponseDto);
-      return { ...mappedOrder, paymentType: 'PAYPAL_REDIRECT', approvalUrl: paypalTransaction.approvalUrl };
+      // Retry payment untuk Card Fields akan sama dengan alur create,
+      // yaitu mengembalikan data order agar frontend bisa membuka modal.
+      return { ...mappedOrder, paymentType: 'PAYPAL_CARD_FIELDS' };
     }
 
     if (['bank_transfer', 'wise'].includes(mappedOrder.paymentMethod.code)) {

@@ -24,14 +24,10 @@ export class PaypalService {
 
   constructor(
     private prisma: PrismaService,
-    // Menggunakan forwardRef untuk menghindari circular dependency dengan OrdersService
     @Inject(forwardRef(() => OrdersService))
     private ordersService: OrdersService,
   ) {}
 
-  /**
-   * Helper untuk membuat PayPal client berdasarkan konfigurasi dari database.
-   */
   private async getPayPalClient(paymentMethodId: number) {
     const paymentMethod = await this.prisma.paymentMethod.findUnique({
       where: { id: paymentMethodId },
@@ -54,9 +50,6 @@ export class PaypalService {
     return new paypal.core.PayPalHttpClient(environment);
   }
 
-  /**
-   * [Alur Card Fields] Membuat Order di sisi PayPal.
-   */
   async createOrder(internalOrderId: number, userId: number) {
     this.logger.log(`[PayPal Card Fields] User #${userId} is attempting to create order for internal order #${internalOrderId}`);
     const order = await this.ordersService.findOne(internalOrderId, userId);
@@ -92,9 +85,6 @@ export class PaypalService {
     }
   }
 
-  /**
-   * [Alur Card Fields] Menangkap (capture) pembayaran.
-   */
   async captureOrder(paypalOrderId: string) {
     this.logger.log(`[PayPal Card Fields] Capturing PayPal order ID: ${paypalOrderId}`);
     const paymentMethod = await this.prisma.paymentMethod.findFirst({ where: { code: 'paypal', isActive: true } });
@@ -134,9 +124,6 @@ export class PaypalService {
     }
   }
 
-  /**
-   * [Alur Redirect] Membuat Transaksi PayPal dengan link persetujuan.
-   */
   async createRedirectTransaction(order: OrderResponseDto) {
     this.logger.log(`[PayPal Redirect] Creating transaction for Order ID: ORDER-${order.id}`);
     if (!order.paymentMethod) {
@@ -186,9 +173,6 @@ export class PaypalService {
     }
   }
 
-  /**
-   * Menangani notifikasi webhook dari PayPal.
-   */
   async handleWebhook(headers: any, body: any) {
     this.logger.log('[PayPal Webhook] Received event.');
     const paymentMethod = await this.prisma.paymentMethod.findFirst({ where: { code: 'paypal', isActive: true } });
