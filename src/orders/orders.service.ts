@@ -250,7 +250,7 @@ export class OrdersService {
           subtotal,
           total,
           paymentStatus: 'PENDING',
-          orderStatus: OrderStatus.PROCESSING,
+          orderStatus: OrderStatus.PENDING_PAYMENT,
           paymentMethodId,
           paymentDueDate,
           currencyCode,
