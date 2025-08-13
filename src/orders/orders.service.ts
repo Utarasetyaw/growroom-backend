@@ -93,17 +93,38 @@ export class OrdersService {
     switch (paymentMethod.code) {
       case 'midtrans':
         const orderIdForMidtrans = `ORDER-${userId}-${Date.now()}`;
+        
+        // ================== PERBAIKAN DI SINI ==================
+        // 1. Siapkan item produk
+        const itemDetailsForMidtrans = dto.orderItems.map(item => {
+            const product = totals.productMap.get(item.productId);
+            if (!product) {
+                throw new BadRequestException(`Product with ID ${item.productId} not found or inactive.`);
+            }
+            const priceInfo = product.prices[0];
+            return {
+                id: `PROD-${item.productId}`,
+                price: Math.round(priceInfo.price), // Gunakan Math.round untuk konsistensi
+                quantity: item.qty,
+                name: (product.name as any)?.en || 'Product',
+            };
+        });
+
+        // 2. Jika ada biaya pengiriman, tambahkan sebagai item terpisah
+        if (totals.shippingCost > 0) {
+            itemDetailsForMidtrans.push({
+                id: 'SHIPPING',
+                price: Math.round(totals.shippingCost), // Gunakan Math.round
+                quantity: 1,
+                name: 'Shipping Cost',
+            });
+        }
+        // =======================================================
+
         paymentResponse = await this.midtransService.createTransaction(
           orderIdForMidtrans,
           totals.total,
-          dto.orderItems.map(item => ({
-            id: `PROD-${item.productId}`,
-            price: Math.round(
-              totals.productMap.get(item.productId)?.prices?.[0]?.price ?? 0
-            ),
-            quantity: item.qty,
-            name: (totals.productMap.get(item.productId)?.name as any)?.en || 'Product',
-          })),
+          itemDetailsForMidtrans, // Kirim array item yang sudah lengkap
           { name: user.name, email: user.email },
           paymentMethod.id,
         );
@@ -123,8 +144,8 @@ export class OrdersService {
 
       case 'bank_transfer':
       case 'wise':
-        // Untuk pembayaran manual, tidak ada interaksi gateway di awal
-        paymentResponse = { paymentType: 'MANUAL' };
+      case 'pay_later':
+        paymentResponse = { paymentType: 'DEFERRED' };
         break;
 
       default:
@@ -161,6 +182,9 @@ export class OrdersService {
         const configObject = typeof paymentMethod.config === 'object' && paymentMethod.config !== null ? paymentMethod.config : {};
         const instructions = { ...configObject, amount: order.total, paymentDueDate: order.paymentDueDate };
         return { ...mapOrderToDto(order), paymentType: 'MANUAL', instructions };
+    }
+    if (paymentMethod.code === 'pay_later') {
+        return { ...mapOrderToDto(order), paymentType: 'DEFERRED' };
     }
   }
 
@@ -255,7 +279,6 @@ export class OrdersService {
       });
 
       await this.cartService.clearCart(userId);
-      // Return the order with all included relations
       return newOrder;
     });
   }
