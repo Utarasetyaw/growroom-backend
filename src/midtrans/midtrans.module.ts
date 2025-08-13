@@ -8,7 +8,6 @@ import { PrismaService } from '../prisma/prisma.service';
 @Module({
   controllers: [MidtransController],
   providers: [MidtransService, PrismaService],
-  // --- TAMBAHKAN BARIS INI ---
   exports: [MidtransService], 
 })
 export class MidtransModule {}

@@ -168,8 +168,10 @@ model Order {
   paymentDueDate  DateTime?
   trackingNumber  String?
   currencyCode    String        @default("IDR")
-  paymentDetails  Json?         // <-- INI DIA BARIS YANG DITAMBAHKAN
-
+  paymentDetails  Json?         
+  midtransOrderId String?  @unique // TAMBAHKAN INI
+  paypalOrderId   String?  @unique // Anda seharusnya sudah punya ini
+  
   @@index([userId])
   @@index([paymentMethodId])
 }

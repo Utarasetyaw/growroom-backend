@@ -1,3 +1,5 @@
+// src/midtrans/midtrans.service.ts
+
 import {
   Injectable,
   BadRequestException,
@@ -9,8 +11,20 @@ import { PrismaService } from '../prisma/prisma.service';
 import { OrderStatus, PaymentStatus, Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
 import { MidtransNotificationDto } from './dto/midtrans-notification.dto';
-import { OrderResponseDto } from '../orders/dto/order-response.dto';
 import axios from 'axios';
+
+// Definisikan interface untuk kejelasan tipe data
+interface CustomerDetails {
+  name: string;
+  email: string;
+}
+
+interface ItemDetails {
+  id: string;
+  price: number;
+  quantity: number;
+  name: string;
+}
 
 @Injectable()
 export class MidtransService {
@@ -19,27 +33,33 @@ export class MidtransService {
   constructor(private prisma: PrismaService) {}
 
   /**
-   * Membuat Transaksi Midtrans Snap.
-   * Logika ini dipindahkan dari PaymentService yang lama.
-   * @param order - Detail order yang akan diproses.
+   * FUNGSI BARU: Membuat transaksi Snap berdasarkan data mentah.
+   * Ini adalah satu-satunya fungsi yang akan dipanggil oleh OrdersService untuk membuat transaksi baru.
+   * @param generatedOrderId - ID unik yang kita buat untuk transaksi ini (e.g., 'ORDER-123-TIMESTAMP').
+   * @param total - Total harga yang harus dibayar.
+   * @param items - Daftar item dalam keranjang.
+   * @param customer - Detail pelanggan.
+   * @param paymentMethodId - ID metode pembayaran untuk mengambil config (serverKey, dll).
    */
-  async createSnapTransaction(order: OrderResponseDto) {
-    this.logger.log(`[Midtrans Snap] Creating transaction for Order ID: ORDER-${order.id}`);
+  async createTransaction(
+    generatedOrderId: string,
+    total: number,
+    items: ItemDetails[],
+    customer: CustomerDetails,
+    paymentMethodId: number,
+  ) {
+    this.logger.log(`[Midtrans] Creating transaction for generated Order ID: ${generatedOrderId}`);
 
-    if (!order.paymentMethod?.id) {
-      throw new InternalServerErrorException('Order payment method is missing or invalid.');
-    }
     const paymentMethod = await this.prisma.paymentMethod.findUnique({
-      where: { id: order.paymentMethod.id },
+      where: { id: paymentMethodId },
     });
 
-    if (!paymentMethod) {
-      throw new InternalServerErrorException('Payment method not found.');
+    if (!paymentMethod?.config) {
+      throw new InternalServerErrorException('Midtrans configuration is not found.');
     }
-    
     const config = paymentMethod.config as any;
-    if (!config?.serverKey) {
-      throw new InternalServerErrorException('Midtrans Server Key is missing from config.');
+    if (!config?.serverKey || !config?.frontendUrl) {
+      throw new InternalServerErrorException('Midtrans Server Key or Frontend URL is missing from config.');
     }
 
     const isProduction = config.mode === 'production';
@@ -48,44 +68,20 @@ export class MidtransService {
       : 'https://app.sandbox.midtrans.com/snap/v1/transactions';
 
     const authString = Buffer.from(`${config.serverKey}:`).toString('base64');
-    
-    const finishUrl = config.frontendUrl;
-    if (!finishUrl) {
-      throw new InternalServerErrorException("Midtrans 'frontendUrl' is not configured in the database.");
-    }
-
-    const itemDetails = order.orderItems.map((item) => {
-      const productName = (item.productName as any)?.en || (item.productName as any)?.id || 'Product';
-      return {
-        id: `PROD-${item.id}`,
-        price: Math.round(item.price),
-        quantity: item.qty,
-        name: productName.substring(0, 50),
-      };
-    });
-
-    if (order.shippingCost > 0) {
-      itemDetails.push({
-        id: 'SHIPPING',
-        price: Math.round(order.shippingCost),
-        quantity: 1,
-        name: 'Shipping Cost',
-      });
-    }
 
     const payload = {
       transaction_details: {
-        order_id: `ORDER-${order.id}`,
-        gross_amount: Math.round(order.total),
+        order_id: generatedOrderId,
+        gross_amount: Math.round(total),
       },
-      item_details: itemDetails,
+      item_details: items,
       customer_details: {
-        first_name: order.user.name.split(' ')[0],
-        last_name: order.user.name.split(' ').slice(1).join(' ') || order.user.name.split(' ')[0],
-        email: order.user.email,
+        first_name: customer.name.split(' ')[0],
+        last_name: customer.name.split(' ').slice(1).join(' ') || customer.name.split(' ')[0],
+        email: customer.email,
       },
       callbacks: {
-        finish: finishUrl,
+        finish: config.frontendUrl, // URL redirect setelah pembayaran selesai/gagal/pending
       },
     };
     
@@ -97,52 +93,54 @@ export class MidtransService {
           Authorization: `Basic ${authString}`,
         },
       });
+      // Kembalikan token dan URL yang dibutuhkan frontend
       return {
         snapToken: response.data.token,
         redirectUrl: response.data.redirect_url,
       };
     } catch (err) {
       const errorData = err.response?.data;
-      this.logger.error('[Midtrans Snap] Failed to create transaction:', errorData || err.message);
+      this.logger.error('[Midtrans] Failed to create transaction:', errorData || err.message);
       throw new InternalServerErrorException(errorData?.error_messages || 'Failed to create Midtrans transaction');
     }
   }
 
   /**
-   * Menangani Notifikasi Pembayaran dari Midtrans (Webhook)
-   * @param payload Data notifikasi yang sudah divalidasi oleh DTO
+   * Menangani Notifikasi Pembayaran dari Midtrans (Webhook).
+   * @param payload Data notifikasi yang sudah divalidasi oleh DTO.
    */
   async handlePaymentNotification(payload: MidtransNotificationDto) {
     this.logger.log(`[Midtrans Webhook] Processing notification for Order ID: ${payload.order_id}`);
 
+    // Langkah 1: Verifikasi signature
     const serverKey = await this._getServerKeyForOrder(payload.order_id);
     if (!this._verifySignature(payload, serverKey)) {
       throw new ForbiddenException('Invalid signature');
     }
     this.logger.log(`[Midtrans Webhook] Signature is valid for Order ID: ${payload.order_id}.`);
 
+    // Langkah 2: Cari order di DB menggunakan `midtransOrderId`
     const order = await this.prisma.order.findUnique({
-      where: { id: parseInt(payload.order_id.replace('ORDER-', ''), 10) },
+      where: { midtransOrderId: payload.order_id }, // **PERUBAHAN PENTING**
       include: { orderItems: true },
     });
 
     if (!order) {
-      this.logger.warn(`[Midtrans Webhook] Order for ${payload.order_id} not found. Acknowledging to stop retries.`);
+      this.logger.warn(`[Midtrans Webhook] Order with midtransOrderId: ${payload.order_id} not found. Acknowledging to stop retries.`);
       return { message: `Order for ${payload.order_id} not found, but acknowledged.` };
     }
 
+    // Langkah 3: Pastikan order belum dalam status final
     const finalStatuses: PaymentStatus[] = [PaymentStatus.PAID, PaymentStatus.CANCELLED, PaymentStatus.REFUND];
     if (finalStatuses.includes(order.paymentStatus)) {
-      this.logger.log(`[Midtrans Webhook] Order ${payload.order_id} is already in a final state (${order.paymentStatus}). No action taken.`);
+      this.logger.log(`[Midtrans Webhook] Order ${order.id} is already in a final state (${order.paymentStatus}). No action taken.`);
       return { message: 'Notification for an already finalized order received, no action taken.' };
     }
 
+    // Langkah 4: Proses status transaksi
     return this._processTransactionStatus(order, payload);
   }
 
-  /**
-   * Memverifikasi signature dari payload webhook Midtrans.
-   */
   private _verifySignature(payload: MidtransNotificationDto, serverKey: string): boolean {
     const signature = crypto
       .createHash('sha512')
@@ -152,47 +150,43 @@ export class MidtransService {
   }
 
   /**
-   * Mendapatkan Server Key dari order terkait untuk verifikasi signature.
+   * REVISI: Mendapatkan Server Key dari order terkait untuk verifikasi signature.
+   * Mencari berdasarkan `midtransOrderId`.
    */
-  private async _getServerKeyForOrder(orderIdPayload: string): Promise<string> {
-    const orderId = parseInt(orderIdPayload.replace('ORDER-', ''), 10);
-    if (isNaN(orderId)) {
-      throw new BadRequestException('Invalid order_id format in notification');
-    }
-
-    const paymentMethod = await this.prisma.paymentMethod.findFirst({
-      where: { orders: { some: { id: orderId } }, code: 'midtrans' },
+  private async _getServerKeyForOrder(midtransOrderId: string): Promise<string> {
+    const order = await this.prisma.order.findUnique({
+        where: { midtransOrderId },
+        include: { paymentMethod: true }
     });
 
-    if (!paymentMethod?.config) {
-      throw new InternalServerErrorException(`Payment configuration is missing for order related to ${orderIdPayload}`);
+    if (!order?.paymentMethod?.config) {
+      throw new InternalServerErrorException(`Payment configuration is missing for order with midtransOrderId: ${midtransOrderId}`);
     }
 
-    const serverKey = (paymentMethod.config as any).serverKey;
+    const serverKey = (order.paymentMethod.config as any).serverKey;
     if (!serverKey) {
-      throw new InternalServerErrorException(`Server key not configured for order related to ${orderIdPayload}`);
+      throw new InternalServerErrorException(`Server key not configured for order with midtransOrderId: ${midtransOrderId}`);
     }
 
     return serverKey;
   }
 
-  /**
-   * Memproses status transaksi dan mengupdate database.
-   */
   private async _processTransactionStatus(order: any, payload: MidtransNotificationDto) {
     const { transaction_status: transactionStatus, order_id } = payload;
-    this.logger.log(`[Midtrans Webhook] Transaction status: ${transactionStatus}`);
+    this.logger.log(`[Midtrans Webhook] Transaction status: ${transactionStatus} for order #${order.id}`);
     
     let updatePayload: Prisma.OrderUpdateInput = {};
 
     if (transactionStatus === 'settlement' || transactionStatus === 'capture') {
       updatePayload.paymentStatus = PaymentStatus.PAID;
+      updatePayload.orderStatus = OrderStatus.PROCESSING; // Ubah status order menjadi sedang diproses
     } else if (['cancel', 'deny', 'expire'].includes(transactionStatus)) {
       updatePayload = {
         paymentStatus: PaymentStatus.CANCELLED,
         orderStatus: OrderStatus.CANCELLED,
       };
 
+      // Kembalikan stok jika pembayaran dibatalkan
       this.logger.log(`[Midtrans Webhook] Restoring stock for cancelled Order #${order.id}`);
       for (const item of order.orderItems) {
         if (item.productId) {

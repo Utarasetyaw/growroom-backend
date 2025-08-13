@@ -7,11 +7,10 @@ import { OrdersModule } from '../orders/orders.module';
 
 @Module({
   imports: [
-    forwardRef(() => OrdersModule), // Gunakan forwardRef di sini juga
+    forwardRef(() => OrdersModule),
   ],
   controllers: [PaypalController],
   providers: [PaypalService, PrismaService],
-  // Export service agar bisa di-inject di modul lain
   exports: [PaypalService],
 })
 export class PaypalModule {}
