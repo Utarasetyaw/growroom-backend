@@ -94,8 +94,6 @@ export class OrdersService {
       case 'midtrans':
         const orderIdForMidtrans = `ORDER-${userId}-${Date.now()}`;
         
-        // ================== PERBAIKAN DI SINI ==================
-        // 1. Siapkan item produk
         const itemDetailsForMidtrans = dto.orderItems.map(item => {
             const product = totals.productMap.get(item.productId);
             if (!product) {
@@ -104,27 +102,25 @@ export class OrdersService {
             const priceInfo = product.prices[0];
             return {
                 id: `PROD-${item.productId}`,
-                price: Math.round(priceInfo.price), // Gunakan Math.round untuk konsistensi
+                price: Math.round(priceInfo.price),
                 quantity: item.qty,
                 name: (product.name as any)?.en || 'Product',
             };
         });
 
-        // 2. Jika ada biaya pengiriman, tambahkan sebagai item terpisah
         if (totals.shippingCost > 0) {
             itemDetailsForMidtrans.push({
                 id: 'SHIPPING',
-                price: Math.round(totals.shippingCost), // Gunakan Math.round
+                price: Math.round(totals.shippingCost),
                 quantity: 1,
                 name: 'Shipping Cost',
             });
         }
-        // =======================================================
 
         paymentResponse = await this.midtransService.createTransaction(
           orderIdForMidtrans,
           totals.total,
-          itemDetailsForMidtrans, // Kirim array item yang sudah lengkap
+          itemDetailsForMidtrans,
           { name: user.name, email: user.email },
           paymentMethod.id,
         );
@@ -406,17 +402,90 @@ export class OrdersService {
     });
   }
 
+  /**
+   * REVISI: Mengaktifkan dan mengimplementasikan logika pembayaran ulang.
+   */
   async retryPayment(orderId: number, userId: number) {
-    // implementasi perlu disesuaikan jika ingin mendukung retry dengan alur baru
-    // Untuk saat ini, kita bisa melempar error atau menonaktifkannya
-    throw new BadRequestException('Retry payment is not yet supported in the new flow.');
+    this.logger.log(`User #${userId} is attempting to retry payment for order #${orderId}`);
+    
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, userId },
+      include: {
+        user: true,
+        paymentMethod: true,
+        orderItems: true,
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Order not found or you do not have permission to access it.');
+    }
+    if (order.orderStatus !== OrderStatus.PENDING_PAYMENT) {
+      throw new BadRequestException('Payment can only be retried for orders awaiting payment.');
+    }
+
+    if (!order.paymentMethod) {
+      throw new BadRequestException('Payment method not found for this order.');
+    }
+    switch (order.paymentMethod.code) {
+      case 'midtrans':
+        const itemDetails = order.orderItems.map(item => ({
+            id: `PROD-${item.productId}`,
+            price: Math.round(item.price),
+            quantity: item.qty,
+            name: (item.productName as any)?.en || 'Product',
+        }));
+        if (order.shippingCost > 0) {
+            itemDetails.push({
+                id: 'SHIPPING',
+                price: Math.round(order.shippingCost),
+                quantity: 1,
+                name: 'Shipping Cost',
+            });
+        }
+
+        const newMidtransOrderId = `ORDER-${order.id}-RETRY-${Date.now()}`;
+
+        if (order.paymentMethodId === null) {
+            throw new BadRequestException('Payment method ID is missing for this order.');
+        }
+        const midtransTransaction = await this.midtransService.createTransaction(
+            newMidtransOrderId,
+            order.total,
+            itemDetails,
+            { name: order.user.name, email: order.user.email },
+            order.paymentMethodId,
+        );
+
+        await this.prisma.order.update({
+            where: { id: order.id },
+            data: { midtransOrderId: newMidtransOrderId }
+        });
+
+        return {
+            paymentType: 'MIDTRANS',
+            snapToken: midtransTransaction.snapToken,
+            redirectUrl: midtransTransaction.redirectUrl,
+            internalOrderId: order.id,
+        };
+
+      case 'paypal':
+        // Alur retry untuk PayPal tidak didukung dalam skenario "Bayar Nanti"
+        throw new BadRequestException('Direct payment methods like PayPal cannot be retried from a deferred state.');
+
+      default:
+        throw new BadRequestException(`Payment retry is not supported for the '${order.paymentMethod.name}' method.`);
+    }
   }
   
   @Cron(CronExpression.EVERY_HOUR)
   async handleExpiredOrders() {
     this.logger.log('Running cron job to check for expired orders...');
     const expiredOrders = await this.prisma.order.findMany({
-      where: { paymentStatus: PaymentStatus.PENDING, paymentDueDate: { lt: new Date() } },
+      where: { 
+        orderStatus: OrderStatus.PENDING_PAYMENT,
+        paymentDueDate: { lt: new Date() } 
+      },
       include: { orderItems: true },
     });
 
@@ -424,10 +493,19 @@ export class OrdersService {
       this.logger.log(`Found ${expiredOrders.length} expired orders. Processing...`);
       for (const order of expiredOrders) {
         await this.prisma.$transaction(async (tx) => {
-          await tx.order.update({ where: { id: order.id }, data: { paymentStatus: PaymentStatus.CANCELLED, orderStatus: OrderStatus.CANCELLED } });
+          await tx.order.update({ 
+            where: { id: order.id }, 
+            data: { 
+              paymentStatus: PaymentStatus.CANCELLED, 
+              orderStatus: OrderStatus.CANCELLED 
+            } 
+          });
           for (const item of order.orderItems) {
             if (item.productId) {
-              await tx.product.update({ where: { id: item.productId }, data: { stock: { increment: item.qty } } });
+              await tx.product.update({ 
+                where: { id: item.productId }, 
+                data: { stock: { increment: item.qty } } 
+              });
             }
           }
         });
@@ -458,7 +536,6 @@ const mapOrderToDto = (order: OrderWithDetails | null): OrderResponseDto | null 
       id: order.paymentMethod.id,
       name: order.paymentMethod.name,
       code: order.paymentMethod.code,
-      // Mengirim config ke frontend diperlukan untuk clientId pada alur Card Fields
       config: order.paymentMethod.config,
     } : undefined,
     user: {
