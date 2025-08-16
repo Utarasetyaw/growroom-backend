@@ -1,5 +1,3 @@
-// src/pdf/pdf.service.ts
-
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrderResponseDto } from '../orders/dto/order-response.dto';
@@ -20,10 +18,6 @@ export class PdfService {
 
   constructor(private prisma: PrismaService) {}
 
-  // =================================================================================
-  // Metode Utama (Publik)
-  // =================================================================================
-
   /**
    * Membuat PDF invoice dengan tampilan profesional.
    */
@@ -36,9 +30,8 @@ export class PdfService {
       doc.on('data', buffers.push.bind(buffers));
       doc.on('end', () => resolve(Buffer.concat(buffers)));
 
-      // Bangun dokumen PDF
       await this.generateHeader(doc, settings);
-      this.generateCustomerInformation(doc, order, settings);
+      this.generateCustomerInformation(doc, order);
       this.generateInvoiceTable(doc, order);
       this.generateFooter(doc, settings);
 
@@ -58,7 +51,6 @@ export class PdfService {
       doc.on('data', buffers.push.bind(buffers));
       doc.on('end', () => resolve(Buffer.concat(buffers)));
 
-      // Bangun dokumen PDF
       await this.generateHeader(doc, settings);
       this.generateReportTitle(doc, startStr, endStr);
       this.generateReportBody(doc, summary);
@@ -68,49 +60,41 @@ export class PdfService {
     });
   }
 
-  // =================================================================================
-  // Metode Helper untuk Styling PDF
-  // =================================================================================
-
   /**
    * Membuat bagian header dokumen dengan logo dan detail perusahaan.
    */
   private async generateHeader(doc: PDFKit.PDFDocument, settings: any) {
-    // Coba ambil dan tampilkan logo jika ada URL-nya
+    const shopName = settings?.shopName?.id || settings?.shopName?.en || 'Nama Toko Anda';
+
+    // --- SISI KIRI: Informasi Perusahaan ---
+    doc
+      .fontSize(20)
+      .font('Helvetica-Bold')
+      .text(shopName, 50, 45)
+      .fontSize(10)
+      .font('Helvetica')
+      .text(settings?.address || 'Alamat Perusahaan', 50, 70)
+      .text(`${settings?.email || 'email@perusahaan.com'} | ${settings?.phoneNumber || '08xx-xxxx-xxxx'}`, 50, 85)
+      .moveDown();
+
+    // --- SISI KANAN: Logo Perusahaan ---
     if (settings?.logoUrl) {
       try {
         const response = await axios.get(settings.logoUrl, { responseType: 'arraybuffer' });
         const logoBuffer = Buffer.from(response.data, 'binary');
-        doc.image(logoBuffer, 50, 45, { width: 50 }).moveDown();
+        // Kalkulasi posisi X agar logo berada di pojok kanan
+        // Lebar halaman A4 (595) - margin kanan (50) - lebar logo (50) = 495
+        doc.image(logoBuffer, 495, 45, { width: 50 });
       } catch (error) {
-        this.logger.error('Failed to fetch logo image, skipping.', error.stack);
-        // Jika gagal, tampilkan nama toko sebagai teks
-        doc
-          .fontSize(20)
-          .font('Helvetica-Bold')
-          .text(settings?.shopName || 'Company Name', 50, 55);
+        this.logger.error('Gagal mengambil gambar logo.', error.stack);
       }
-    } else {
-        // Jika tidak ada logo, tampilkan nama toko sebagai teks
-        doc
-        .fontSize(20)
-        .font('Helvetica-Bold')
-        .text(settings?.shopName || 'Company Name', 50, 55);
     }
-    
-    // Detail Perusahaan di sisi kanan
-    doc
-      .fontSize(10)
-      .font('Helvetica')
-      .text(settings?.address || 'Alamat Perusahaan', 200, 50, { align: 'right' })
-      .text(`${settings?.email || 'email@company.com'} | ${settings?.phoneNumber || '08xx-xxxx-xxxx'}`, 200, 65, { align: 'right' })
-      .moveDown();
   }
 
   /**
    * Membuat bagian informasi pelanggan dan detail invoice.
    */
-  private generateCustomerInformation(doc: PDFKit.PDFDocument, order: OrderResponseDto, settings: any) {
+  private generateCustomerInformation(doc: PDFKit.PDFDocument, order: OrderResponseDto) {
     doc.fillColor('#444444').fontSize(20).font('Helvetica-Bold').text('INVOICE', 50, 160);
     this.generateHr(doc, 185);
 
@@ -145,7 +129,7 @@ export class PdfService {
    * Membuat tabel rincian item pada invoice.
    */
   private generateInvoiceTable(doc: PDFKit.PDFDocument, order: OrderResponseDto) {
-    let i;
+    let i = 0;
     const invoiceTableTop = 330;
     const currency = order.currencyCode;
 
@@ -154,8 +138,7 @@ export class PdfService {
     this.generateHr(doc, invoiceTableTop + 20);
     doc.font('Helvetica');
 
-    for (i = 0; i < order.orderItems.length; i++) {
-      const item = order.orderItems[i];
+    for (const item of order.orderItems) {
       const position = invoiceTableTop + (i + 1) * 30;
       const name = (item.productName as any)?.id || (item.productName as any)?.en || 'Produk Dihapus';
       
@@ -168,9 +151,10 @@ export class PdfService {
         this.formatCurrency(item.subtotal, currency),
       );
       this.generateHr(doc, position + 20);
+      i++;
     }
 
-    const subtotalPosition = invoiceTableTop + (i + 1) * 30;
+    const subtotalPosition = invoiceTableTop + i * 30 + 30;
     this.generateTableRow(doc, subtotalPosition, '', '', 'Subtotal', this.formatCurrency(order.subtotal, currency));
 
     const shippingPosition = subtotalPosition + 20;
@@ -217,10 +201,11 @@ export class PdfService {
    */
   private generateFooter(doc: PDFKit.PDFDocument, settings: any) {
     this.generateHr(doc, 750, 50, 512);
+    const shopName = settings?.shopName?.id || settings?.shopName?.en || 'toko kami';
     doc
       .fontSize(10)
       .text(
-        `Terima kasih telah berbelanja di ${settings?.shopName || 'toko kami'}.`,
+        `Terima kasih telah berbelanja di ${shopName}.`,
         50,
         760,
         { align: 'center', width: 500 },
