@@ -10,6 +10,8 @@ import {
   Req,
   Res,
   Query,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -19,6 +21,7 @@ import {
   ApiNotFoundResponse,
   ApiForbiddenResponse,
   ApiQuery,
+  ApiBadRequestResponse,
 } from '@nestjs/swagger';
 import { OrdersService } from './orders.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -30,7 +33,8 @@ import { UpdateOrderDto } from './dto/update-order.dto';
 import { RequestWithUser } from '../common/interfaces/request-with-user.interface';
 import { Response } from 'express';
 import { OrderResponseDto } from './dto/order-response.dto';
-import { OrderResponseDto as CreateOrderResponseDto } from './dto/create-order-response.dto';
+// Ganti nama alias agar lebih jelas
+import { CreateOrderResponse } from './dto/create-order-response.dto';
 
 @ApiTags('Orders')
 @Controller('orders')
@@ -40,13 +44,15 @@ export class OrdersController {
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.USER)
+  @HttpCode(HttpStatus.CREATED) // Menegaskan status code 201
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Membuat order baru (User Only)' })
   @ApiResponse({
     status: 201,
-    description: 'Order berhasil dibuat.',
-    type: CreateOrderResponseDto,
+    description: 'Order berhasil dibuat dan mengembalikan detail pembayaran.',
+    type: CreateOrderResponse, // Menggunakan DTO yang lebih spesifik
   })
+  @ApiBadRequestResponse({ description: 'Data yang dikirim tidak valid (misal: stok kurang, item kosong).' })
   create(@Req() req: RequestWithUser, @Body() dto: CreateOrderDto) {
     return this.service.create(req.user.userId, dto);
   }
@@ -56,7 +62,7 @@ export class OrdersController {
   @Roles(Role.OWNER, Role.ADMIN)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Mendapatkan semua order (Admin/Owner Only)' })
-  @ApiResponse({ status: 200, type: [OrderResponseDto] })
+  @ApiResponse({ status: 200, description: 'Daftar semua order berhasil diambil.' })
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 10 })
   findAll(
@@ -73,7 +79,7 @@ export class OrdersController {
   @Roles(Role.USER)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Mendapatkan semua order milik user yang login' })
-  @ApiResponse({ status: 200, type: [OrderResponseDto] })
+  @ApiResponse({ status: 200, description: 'Daftar order milik user berhasil diambil.', type: [OrderResponseDto] })
   getMyOrders(@Req() req: RequestWithUser) {
     return this.service.findUserOrders(req.user.userId);
   }
@@ -83,7 +89,9 @@ export class OrdersController {
   @Roles(Role.OWNER, Role.ADMIN, Role.USER)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Mendapatkan detail order berdasarkan ID' })
-  @ApiResponse({ status: 200, type: OrderResponseDto })
+  @ApiResponse({ status: 200, description: 'Detail order berhasil diambil.', type: OrderResponseDto })
+  @ApiNotFoundResponse({ description: 'Order dengan ID yang diberikan tidak ditemukan.' })
+  @ApiForbiddenResponse({ description: 'Anda tidak memiliki hak akses untuk melihat order ini.' })
   findOne(@Req() req: RequestWithUser, @Param('id', ParseIntPipe) id: number) {
     return this.service.findOne(
       id,
@@ -96,7 +104,9 @@ export class OrdersController {
   @Roles(Role.OWNER, Role.ADMIN)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update status order (Admin/Owner Only)' })
-  @ApiResponse({ status: 200, type: OrderResponseDto })
+  @ApiResponse({ status: 200, description: 'Status order berhasil diperbarui.', type: OrderResponseDto })
+  @ApiNotFoundResponse({ description: 'Order dengan ID yang diberikan tidak ditemukan.' })
+  @ApiBadRequestResponse({ description: 'Data status yang dikirim tidak valid.' })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateOrderDto) {
     return this.service.update(id, dto);
   }
@@ -106,39 +116,48 @@ export class OrdersController {
   @Roles(Role.OWNER, Role.ADMIN, Role.USER)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Download invoice dalam format PDF' })
-  @ApiResponse({ status: 200, description: 'File PDF invoice.' })
+  @ApiResponse({ status: 200, description: 'File PDF invoice berhasil dibuat.' })
+  @ApiNotFoundResponse({ description: 'Order dengan ID yang diberikan tidak ditemukan.' })
+  @ApiForbiddenResponse({ description: 'Anda tidak memiliki hak akses untuk mengunduh invoice ini.' })
   async downloadInvoicePdf(
     @Req() req: RequestWithUser,
     @Param('id', ParseIntPipe) id: number,
     @Res() res: Response,
   ) {
-    const buffer = await this.service.generateInvoicePdf(
-      id,
-      req.user.role === Role.USER ? req.user.userId : undefined,
-    );
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename=invoice-order-${id}.pdf`,
-    );
-    res.end(buffer);
+    try {
+      const buffer = await this.service.generateInvoicePdf(
+        id,
+        req.user.role === Role.USER ? req.user.userId : undefined,
+      );
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename=invoice-order-${id}.pdf`,
+      );
+      // Menggunakan res.send() lebih umum di Express untuk mengirim buffer
+      res.send(buffer);
+    } catch (error) {
+        // Menangani error dari service layer (misal: NotFoundException)
+        // dan mengirim respons yang sesuai.
+        res.status(error.status || 500).json({
+            statusCode: error.status || 500,
+            message: error.message || 'Gagal membuat file PDF.',
+        });
+    }
   }
 
   @Post(':id/retry-payment')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.USER)
   @ApiBearerAuth()
-  @ApiOperation({
-    summary: 'Mencoba kembali pembayaran untuk order yang berstatus PENDING',
-  })
+  @ApiOperation({ summary: 'Mencoba kembali pembayaran untuk order yang PENDING' })
   @ApiResponse({
     status: 200,
     description: 'Proses pembayaran berhasil diinisiasi ulang.',
   })
   @ApiNotFoundResponse({ description: 'Order tidak ditemukan.' })
-  @ApiForbiddenResponse({
-    description: 'Akses ditolak atau order tidak dalam status PENDING.',
-  })
+  @ApiForbiddenResponse({ description: 'Akses ditolak atau order tidak dalam status yang valid untuk dicoba ulang.' })
   retryPayment(
     @Req() req: RequestWithUser,
     @Param('id', ParseIntPipe) id: number,

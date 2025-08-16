@@ -1,5 +1,17 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, IsArray, IsInt, Min, ValidateNested, IsOptional } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsArray,
+  IsInt,
+  Min,
+  ValidateNested,
+  IsOptional,
+  ArrayMinSize, // <-- REVISI: Impor ArrayMinSize
+  MinLength,    // <-- REVISI: Impor MinLength
+  IsUppercase,  // <-- REVISI: Impor IsUppercase
+  Length,       // <-- REVISI: Impor Length
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 class CreateOrderItemDto {
@@ -9,14 +21,15 @@ class CreateOrderItemDto {
 
   @ApiProperty({ description: 'Jumlah kuantitas produk.', example: 2 })
   @IsInt()
-  @Min(1)
+  @Min(1, { message: 'Jumlah kuantitas minimal adalah 1.' }) // Pesan error kustom
   qty: number;
 }
 
 export class CreateOrderDto {
   @ApiProperty({ description: 'Alamat lengkap pengiriman.', example: 'Jl. Sudirman No. 123, Jakarta' })
-  @IsNotEmpty()
   @IsString()
+  @IsNotEmpty({ message: 'Alamat tidak boleh kosong.' })
+  @MinLength(10, { message: 'Alamat terlalu pendek, mohon berikan alamat yang lebih lengkap.' }) // <-- REVISI
   address: string;
 
   @ApiProperty({ description: 'ID dari metode pembayaran yang dipilih.', example: 1 })
@@ -26,16 +39,19 @@ export class CreateOrderDto {
   @ApiProperty({ description: 'List barang yang dipesan.', type: [CreateOrderItemDto] })
   @IsArray()
   @ValidateNested({ each: true })
+  @ArrayMinSize(1, { message: 'Keranjang belanja tidak boleh kosong.' }) // <-- REVISI
   @Type(() => CreateOrderItemDto)
   orderItems: CreateOrderItemDto[];
 
-  @ApiProperty({ description: 'Kode mata uang yang digunakan saat checkout (e.g., "IDR", "USD").', example: 'IDR' })
+  @ApiProperty({ description: 'Kode mata uang 3 digit (ISO 4217).', example: 'IDR' })
   @IsString()
   @IsNotEmpty()
+  @IsUppercase({ message: 'Kode mata uang harus dalam format huruf kapital.' }) // <-- REVISI
+  @Length(3, 3, { message: 'Kode mata uang harus terdiri dari 3 karakter.' }) // <-- REVISI
   currencyCode: string;
 
-  @ApiPropertyOptional({ description: 'ID dari tarif pengiriman (kota) yang dipilih. Diperlukan jika pengiriman tidak gratis.', example: 5 })
-  @IsInt()
+  @ApiPropertyOptional({ description: 'ID dari tarif pengiriman yang dipilih.', example: 5 })
   @IsOptional()
+  @IsInt()
   shippingRateId?: number;
 }

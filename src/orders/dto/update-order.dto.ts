@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsEnum, IsString, IsNotEmpty } from 'class-validator';
+import { IsOptional, IsEnum, IsString, IsNotEmpty, MinLength } from 'class-validator';
 import { PaymentStatus, OrderStatus } from '@prisma/client';
 
 export class UpdateOrderDto {
@@ -25,6 +25,9 @@ export class UpdateOrderDto {
   })
   @IsOptional()
   @IsString()
-  @IsNotEmpty()
+  // @IsNotEmpty memastikan jika properti ini dikirim, nilainya tidak boleh string kosong ""
+  @IsNotEmpty({ message: 'Nomor resi tidak boleh kosong.' }) 
+  // REVISI: Menambahkan validasi panjang minimal untuk nomor resi
+  @MinLength(8, { message: 'Nomor resi tampaknya terlalu pendek.' })
   trackingNumber?: string;
 }

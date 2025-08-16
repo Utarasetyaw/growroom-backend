@@ -1,11 +1,8 @@
-// src/orders/orders.service.ts
-
 import {
   Injectable,
   BadRequestException,
   ForbiddenException,
   NotFoundException,
-  InternalServerErrorException,
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
@@ -13,14 +10,13 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { CartService } from '../cart/cart.service';
 import { sendTelegramMessage } from '../utils/telegram.util';
-import * as PDFDocument from 'pdfkit';
 import { OrderStatus, PaymentStatus, Prisma, User, Product } from '@prisma/client';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { OrderResponseDto } from './dto/order-response.dto';
 import { MidtransService } from '../midtrans/midtrans.service';
 import { PaypalService } from '../paypal/paypal.service';
+import { PdfService } from '../pdf/pdf.service';
 
-// Definisikan tipe data untuk kejelasan
 type OrderWithDetails = Prisma.OrderGetPayload<{
   include: {
     user: true;
@@ -29,29 +25,26 @@ type OrderWithDetails = Prisma.OrderGetPayload<{
   };
 }>;
 
-// Tipe data untuk hasil kalkulasi
 interface CalculatedTotals {
   subtotal: number;
   shippingCost: number;
   total: number;
-  productMap: Map<number, Product & { prices: any[], images: any[] }>;
+  productMap: Map<number, Product & { prices: any[]; images: any[] }>;
 }
 
-// Tipe data untuk menyimpan order
 interface SaveOrderPayload {
-    userId: number;
-    address: string;
-    shippingCost: number;
-    subtotal: number;
-    total: number;
-    paymentMethodId: number;
-    currencyCode: string;
-    orderItems: any[];
-    productMap: Map<number, any>;
-    midtransOrderId?: string;
-    paypalOrderId?: string;
+  userId: number;
+  address: string;
+  shippingCost: number;
+  subtotal: number;
+  total: number;
+  paymentMethodId: number;
+  currencyCode: string;
+  orderItems: any[];
+  productMap: Map<number, any>;
+  midtransOrderId?: string;
+  paypalOrderId?: string;
 }
-
 
 @Injectable()
 export class OrdersService {
@@ -62,61 +55,52 @@ export class OrdersService {
     private cartService: CartService,
     private midtransService: MidtransService,
     private paypalService: PaypalService,
+    private pdfService: PdfService,
   ) {}
 
-  /**
-   * Metode utama untuk membuat order.
-   * Alur: Kalkulasi -> Inisiasi Gateway -> Simpan ke DB.
-   */
   async create(userId: number, dto: CreateOrderDto) {
     const { paymentMethodId } = dto;
 
     const [paymentMethod, user] = await Promise.all([
-        this.prisma.paymentMethod.findUnique({ where: { id: paymentMethodId } }),
-        this.prisma.user.findUnique({ where: { id: userId } })
+      this.prisma.paymentMethod.findUnique({ where: { id: paymentMethodId } }),
+      this.prisma.user.findUnique({ where: { id: userId } }),
     ]);
-    
+
     if (!paymentMethod || !paymentMethod.isActive) {
-      throw new BadRequestException('Invalid or disabled payment method');
+      throw new BadRequestException('Metode pembayaran tidak valid atau nonaktif.');
     }
     if (!user) {
-        throw new NotFoundException('User not found.');
+      throw new NotFoundException('Pengguna tidak ditemukan.');
     }
 
-    // Langkah 1: Kalkulasi semua total dan validasi data produk
     const totals = await this._calculateTotals(dto);
-
-    // Langkah 2: Proses berdasarkan metode pembayaran
     let paymentResponse: any;
     let orderData: Partial<SaveOrderPayload> = {};
 
     switch (paymentMethod.code) {
       case 'midtrans':
         const orderIdForMidtrans = `ORDER-${userId}-${Date.now()}`;
-        
-        const itemDetailsForMidtrans = dto.orderItems.map(item => {
-            const product = totals.productMap.get(item.productId);
-            if (!product) {
-                throw new BadRequestException(`Product with ID ${item.productId} not found or inactive.`);
-            }
-            const priceInfo = product.prices[0];
-            return {
-                id: `PROD-${item.productId}`,
-                price: Math.round(priceInfo.price),
-                quantity: item.qty,
-                name: (product.name as any)?.en || 'Product',
-            };
+        const itemDetailsForMidtrans = dto.orderItems.map((item) => {
+          const product = totals.productMap.get(item.productId);
+          if (!product) {
+            throw new BadRequestException(`Produk dengan ID ${item.productId} tidak ditemukan.`);
+          }
+          const priceInfo = product.prices[0];
+          return {
+            id: `PROD-${item.productId}`,
+            price: Math.round(priceInfo.price),
+            quantity: item.qty,
+            name: (product.name as any)?.en || 'Product',
+          };
         });
-
         if (totals.shippingCost > 0) {
-            itemDetailsForMidtrans.push({
-                id: 'SHIPPING',
-                price: Math.round(totals.shippingCost),
-                quantity: 1,
-                name: 'Shipping Cost',
-            });
+          itemDetailsForMidtrans.push({
+            id: 'SHIPPING',
+            price: Math.round(totals.shippingCost),
+            quantity: 1,
+            name: 'Shipping Cost',
+          });
         }
-
         paymentResponse = await this.midtransService.createTransaction(
           orderIdForMidtrans,
           totals.total,
@@ -145,20 +129,13 @@ export class OrdersService {
         break;
 
       default:
-        throw new BadRequestException('Unsupported payment method.');
+        throw new BadRequestException('Metode pembayaran tidak didukung.');
     }
 
-    // Langkah 3: Simpan order ke database SETELAH gateway berhasil
-    const finalOrderPayload: SaveOrderPayload = {
-        ...dto,
-        ...totals,
-        ...orderData,
-        userId,
-    };
+    const finalOrderPayload: SaveOrderPayload = { ...dto, ...totals, ...orderData, userId };
     const order = await this._saveOrderToDb(finalOrderPayload);
     await this._sendTelegramNotification(order);
 
-    // Langkah 4: Kembalikan respons yang sesuai ke frontend
     if (paymentMethod.code === 'midtrans') {
       return {
         paymentType: 'MIDTRANS',
@@ -175,22 +152,19 @@ export class OrdersService {
       };
     }
     if (['bank_transfer', 'wise'].includes(paymentMethod.code)) {
-        const configObject = typeof paymentMethod.config === 'object' && paymentMethod.config !== null ? paymentMethod.config : {};
-        const instructions = { ...configObject, amount: order.total, paymentDueDate: order.paymentDueDate };
-        return { ...mapOrderToDto(order), paymentType: 'MANUAL', instructions };
+      const configObject = typeof paymentMethod.config === 'object' && paymentMethod.config !== null ? paymentMethod.config : {};
+      const instructions = { ...configObject, amount: order.total, paymentDueDate: order.paymentDueDate };
+      return { ...mapOrderToDto(order), paymentType: 'MANUAL', instructions };
     }
     if (paymentMethod.code === 'pay_later') {
-        return { ...mapOrderToDto(order), paymentType: 'DEFERRED' };
+      return { ...mapOrderToDto(order), paymentType: 'DEFERRED' };
     }
   }
 
-  /**
-   * Helper untuk kalkulasi total dan validasi produk.
-   */
   private async _calculateTotals(dto: CreateOrderDto): Promise<CalculatedTotals> {
     const { orderItems, shippingRateId, currencyCode } = dto;
     if (!orderItems || orderItems.length === 0) {
-      throw new BadRequestException('Order items cannot be empty.');
+      throw new BadRequestException('Item pesanan tidak boleh kosong.');
     }
 
     const productIds = orderItems.map((item) => item.productId);
@@ -206,9 +180,9 @@ export class OrdersService {
     let subtotal = 0;
     for (const item of orderItems) {
       const product = productMap.get(item.productId);
-      if (!product) throw new BadRequestException(`Product with ID ${item.productId} not found or inactive.`);
-      if (product.stock < item.qty) throw new BadRequestException(`Insufficient stock for product ${(product.name as any)?.en}.`);
-      if (!product.prices[0]) throw new BadRequestException(`Price in ${currencyCode} not found for product ${(product.name as any)?.en}.`);
+      if (!product) throw new BadRequestException(`Produk dengan ID ${item.productId} tidak ditemukan.`);
+      if (product.stock < item.qty) throw new BadRequestException(`Stok tidak cukup untuk produk ${(product.name as any)?.en}.`);
+      if (!product.prices[0]) throw new BadRequestException(`Harga dalam ${currencyCode} tidak ditemukan untuk ${(product.name as any)?.en}.`);
       subtotal += product.prices[0].price * item.qty;
     }
 
@@ -218,16 +192,13 @@ export class OrdersService {
         where: { id: shippingRateId },
         include: { prices: { where: { currency: { code: currencyCode } } } },
       });
-      if (!rate?.prices[0]) throw new BadRequestException(`Invalid shipping rate for currency ${currencyCode}.`);
+      if (!rate?.prices[0]) throw new BadRequestException(`Tarif pengiriman tidak valid untuk mata uang ${currencyCode}.`);
       shippingCost = rate.prices[0].price;
     }
 
     return { subtotal, shippingCost, total: subtotal + shippingCost, productMap };
   }
 
-  /**
-   * Helper untuk menyimpan order dan itemnya ke DB dalam satu transaksi.
-   */
   private async _saveOrderToDb(payload: SaveOrderPayload): Promise<OrderWithDetails> {
     const { userId, address, shippingCost, subtotal, total, paymentMethodId, currencyCode, midtransOrderId, paypalOrderId, orderItems, productMap } = payload;
     
@@ -280,10 +251,10 @@ export class OrdersService {
   }
 
   private async _sendTelegramNotification(order: OrderWithDetails): Promise<void> {
-    this.logger.log(`[Telegram] Memulai proses notifikasi untuk Order #${order.id}...`);
+    this.logger.log(`[Telegram] Memulai notifikasi untuk Order #${order.id}...`);
     const setting = await this.prisma.generalSetting.findUnique({ where: { id: 1 } });
     if (!setting?.telegramBotToken || !setting?.telegramChatId) {
-      this.logger.error(`[Telegram] Proses dihentikan: Bot Token atau Chat ID tidak ditemukan.`);
+      this.logger.error(`[Telegram] Gagal: Bot Token atau Chat ID tidak ditemukan.`);
       return;
     }
     const totalFormatted = order.total.toLocaleString('id-ID', { style: 'currency', currency: order.currencyCode });
@@ -328,16 +299,17 @@ export class OrdersService {
       where: { id },
       include: { user: true, orderItems: { include: { product: true } }, paymentMethod: true },
     });
-    if (!order) throw new NotFoundException('Order not found');
-    if (userId && order.userId !== userId) throw new ForbiddenException('Forbidden');
+    if (!order) throw new NotFoundException('Order tidak ditemukan.');
+    if (userId && order.userId !== userId) throw new ForbiddenException('Akses ditolak.');
     return mapOrderToDto(order);
   }
   
   async update(id: number, dto: UpdateOrderDto) {
     const { paymentStatus, orderStatus, trackingNumber } = dto;
     const existingOrder = await this.prisma.order.findUnique({ where: { id }, include: { orderItems: true } });
-    if (!existingOrder) throw new NotFoundException('Order not found');
+    if (!existingOrder) throw new NotFoundException('Order tidak ditemukan.');
     const isStatusChangingToCancelled = existingOrder.orderStatus !== OrderStatus.CANCELLED && orderStatus === OrderStatus.CANCELLED;
+    
     await this.prisma.$transaction(async (tx) => {
       await tx.order.update({ where: { id }, data: { paymentStatus, orderStatus, trackingNumber } });
       if (isStatusChangingToCancelled) {
@@ -352,61 +324,15 @@ export class OrdersService {
   }
   
   async generateInvoicePdf(orderId: number, userId?: number): Promise<Buffer> {
-    const order = await this.findOne(orderId, userId);
-    if (!order) throw new NotFoundException('Order not found');
-    const doc = new PDFDocument({ margin: 40, size: 'A4' });
-    const buffers: Buffer[] = [];
-    doc.on('data', (d) => buffers.push(d));
-    doc.fontSize(16).text('INVOICE', { align: 'center', underline: true });
-    doc.moveDown(0.5);
-    doc.fontSize(10).text(`Order ID: #${order.id}    |    Date: ${order.createdAt.toLocaleDateString('id-ID')}`);
-    doc.moveDown(0.5);
-    doc.text(`Customer: ${order.user?.name || 'N/A'} (${order.user?.email || '-'})`);
-    doc.text(`Address: ${order.address}`);
-    doc.moveDown();
-    const tableTop = doc.y;
-    doc.fontSize(11).font('Helvetica-Bold');
-    doc.text('Product', 50, tableTop);
-    doc.text('Qty', 300, tableTop);
-    doc.text('Price', 370, tableTop, { width: 90, align: 'right' });
-    doc.text('Subtotal', 460, tableTop, { width: 90, align: 'right' });
-    doc.font('Helvetica');
-    doc.moveTo(40, doc.y).lineTo(560, doc.y).stroke().moveDown();
-    order.orderItems.forEach((item) => {
-      const itemY = doc.y;
-      const name = (item.productName as any)?.id || (item.productName as any)?.en || 'Product Deleted';
-      doc.text(name, 50, itemY, { width: 240 });
-      doc.text(item.qty.toString(), 300, itemY);
-      doc.text(item.price.toLocaleString('id-ID', { style: 'currency', currency: order.currencyCode }), 370, itemY, { width: 90, align: 'right' });
-      doc.text(item.subtotal.toLocaleString('id-ID', { style: 'currency', currency: order.currencyCode }), 460, itemY, { width: 90, align: 'right' });
-      doc.moveDown();
-    });
-    doc.moveTo(40, doc.y).lineTo(560, doc.y).stroke().moveDown();
-    let summaryY = doc.y;
-    doc.text('Subtotal', 370, summaryY, { width: 90 });
-    doc.text(order.subtotal.toLocaleString('id-ID', { style: 'currency', currency: order.currencyCode }), 460, summaryY, { width: 90, align: 'right' });
-    summaryY += 15;
-    doc.text('Shipping', 370, summaryY, { width: 90 });
-    doc.text(order.shippingCost.toLocaleString('id-ID', { style: 'currency', currency: order.currencyCode }), 460, summaryY, { width: 90, align: 'right' });
-    summaryY += 20;
-    doc.font('Helvetica-Bold');
-    doc.text('TOTAL', 370, summaryY, { width: 90 });
-    doc.text(order.total.toLocaleString('id-ID', { style: 'currency', currency: order.currencyCode }), 460, summaryY, { width: 90, align: 'right' });
-    doc.font('Helvetica');
-    doc.moveDown(2);
-    doc.text(`Payment Method: ${order.paymentMethod?.name || '-'}`, { align: 'right' });
-    doc.text(`Payment Status: ${order.paymentStatus}`, { align: 'right' });
-    doc.end();
-    return new Promise((resolve) => {
-      doc.on('end', () => resolve(Buffer.concat(buffers)));
-    });
+    const orderData = await this.findOne(orderId, userId);
+    if (!orderData) {
+      throw new NotFoundException('Order tidak ditemukan atau akses ditolak.');
+    }
+    return this.pdfService.generateInvoicePdf(orderData);
   }
 
-  /**
-   * REVISI: Mengaktifkan dan mengimplementasikan logika pembayaran ulang.
-   */
   async retryPayment(orderId: number, userId: number) {
-    this.logger.log(`User #${userId} is attempting to retry payment for order #${orderId}`);
+    this.logger.log(`User #${userId} mencoba membayar ulang order #${orderId}`);
     
     const order = await this.prisma.order.findFirst({
       where: { id: orderId, userId },
@@ -418,15 +344,15 @@ export class OrdersService {
     });
 
     if (!order) {
-      throw new NotFoundException('Order not found or you do not have permission to access it.');
+      throw new NotFoundException('Order tidak ditemukan atau Anda tidak memiliki izin.');
     }
     if (order.orderStatus !== OrderStatus.PENDING_PAYMENT) {
-      throw new BadRequestException('Payment can only be retried for orders awaiting payment.');
+      throw new BadRequestException('Pembayaran hanya bisa dicoba ulang untuk order yang menunggu pembayaran.');
+    }
+    if (!order.paymentMethod) {
+      throw new BadRequestException('Metode pembayaran tidak ditemukan untuk order ini.');
     }
 
-    if (!order.paymentMethod) {
-      throw new BadRequestException('Payment method not found for this order.');
-    }
     switch (order.paymentMethod.code) {
       case 'midtrans':
         const itemDetails = order.orderItems.map(item => ({
@@ -443,11 +369,9 @@ export class OrdersService {
                 name: 'Shipping Cost',
             });
         }
-
         const newMidtransOrderId = `ORDER-${order.id}-RETRY-${Date.now()}`;
-
         if (order.paymentMethodId === null) {
-            throw new BadRequestException('Payment method ID is missing for this order.');
+            throw new BadRequestException('ID metode pembayaran hilang.');
         }
         const midtransTransaction = await this.midtransService.createTransaction(
             newMidtransOrderId,
@@ -456,12 +380,10 @@ export class OrdersService {
             { name: order.user.name, email: order.user.email },
             order.paymentMethodId,
         );
-
         await this.prisma.order.update({
             where: { id: order.id },
             data: { midtransOrderId: newMidtransOrderId }
         });
-
         return {
             paymentType: 'MIDTRANS',
             snapToken: midtransTransaction.snapToken,
@@ -469,18 +391,14 @@ export class OrdersService {
             internalOrderId: order.id,
         };
 
-      case 'paypal':
-        // Alur retry untuk PayPal tidak didukung dalam skenario "Bayar Nanti"
-        throw new BadRequestException('Direct payment methods like PayPal cannot be retried from a deferred state.');
-
       default:
-        throw new BadRequestException(`Payment retry is not supported for the '${order.paymentMethod.name}' method.`);
+        throw new BadRequestException(`Pembayaran ulang tidak didukung untuk metode '${order.paymentMethod.name}'.`);
     }
   }
   
   @Cron(CronExpression.EVERY_HOUR)
   async handleExpiredOrders() {
-    this.logger.log('Running cron job to check for expired orders...');
+    this.logger.log('Menjalankan cron job untuk memeriksa order kedaluwarsa...');
     const expiredOrders = await this.prisma.order.findMany({
       where: { 
         orderStatus: OrderStatus.PENDING_PAYMENT,
@@ -490,7 +408,7 @@ export class OrdersService {
     });
 
     if (expiredOrders.length > 0) {
-      this.logger.log(`Found ${expiredOrders.length} expired orders. Processing...`);
+      this.logger.log(`Ditemukan ${expiredOrders.length} order kedaluwarsa. Memproses...`);
       for (const order of expiredOrders) {
         await this.prisma.$transaction(async (tx) => {
           await tx.order.update({ 
@@ -509,10 +427,10 @@ export class OrdersService {
             }
           }
         });
-        this.logger.log(`Order #${order.id} expired. Status updated to CANCELLED and stock returned.`);
+        this.logger.log(`Order #${order.id} kedaluwarsa. Status diubah ke CANCELLED dan stok dikembalikan.`);
       }
     } else {
-      this.logger.log('No expired orders found.');
+      this.logger.log('Tidak ada order kedaluwarsa yang ditemukan.');
     }
   }
 }
@@ -520,23 +438,33 @@ export class OrdersService {
 const mapOrderToDto = (order: OrderWithDetails | null): OrderResponseDto | null => {
   if (!order) return null;
   return {
-    ...order,
+    id: order.id,
+    address: order.address,
+    shippingCost: order.shippingCost,
+    subtotal: order.subtotal,
+    total: order.total,
     currencyCode: order.currencyCode,
+    paymentStatus: order.paymentStatus,
+    orderStatus: order.orderStatus,
+    createdAt: order.createdAt,
+    updatedAt: order.updatedAt,
     paymentDueDate: order.paymentDueDate ?? undefined,
     orderItems: order.orderItems.map((item) => ({
-      ...item,
-      productName: item.productName,
-      productVariant: item.productVariant,
+      id: item.id,
+      qty: item.qty,
+      price: item.price,
+      subtotal: item.subtotal,
+      productName: (item.productName ?? {}) as any,
+      productVariant: item.productVariant === null ? undefined : (item.productVariant as any),
       productImage: item.productImage ?? undefined,
       product: item.product
-        ? { id: item.product.id, name: item.product.name }
-        : { id: item.productId ?? 0, name: item.productName },
+        ? { id: item.product.id, name: (item.product.name ?? {}) as any }
+        : { id: item.productId ?? 0, name: (item.productName ?? {}) as any },
     })),
     paymentMethod: order.paymentMethod ? {
       id: order.paymentMethod.id,
       name: order.paymentMethod.name,
       code: order.paymentMethod.code,
-      config: order.paymentMethod.config,
     } : undefined,
     user: {
       id: order.user.id,

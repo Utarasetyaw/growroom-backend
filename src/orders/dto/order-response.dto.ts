@@ -1,58 +1,63 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { OrderStatus, PaymentStatus } from '@prisma/client';
 
+// REVISI: DTO khusus untuk menangani nama dalam berbagai bahasa
+class MultiLanguageNameDto {
+  @ApiPropertyOptional({ type: String, example: 'Product Name in English' })
+  en?: string;
+  @ApiPropertyOptional({ type: String, example: 'Nama Produk dalam Bahasa Indonesia' })
+  id?: string;
+}
+
 // DTO parsial untuk data yang berulang
 class UserInOrderDto {
-  @ApiProperty()
+  @ApiProperty({ example: 101 })
   id: number;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'John Doe' })
   name: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'john.doe@example.com' })
   email: string;
 }
 
 class ProductInOrderDto {
-  @ApiProperty()
+  @ApiProperty({ example: 12 })
   id: number;
 
   @ApiProperty({
-    description:
-      'Nama produk saat ini (bisa berubah). Untuk nama saat order, gunakan `productName` di OrderItem.',
+    description: 'Nama produk dalam format multilingual.',
+    type: MultiLanguageNameDto,
   })
-  name: any; // Tetap 'any' untuk JSON dari Prisma
+  name: MultiLanguageNameDto; // REVISI: Menggunakan tipe yang jelas, bukan 'any'
 }
 
 class PaymentMethodInOrderDto {
-  @ApiProperty()
+  @ApiProperty({ example: 1 })
   id: number;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'Bank Transfer' })
   name: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'bank_transfer' })
   code: string;
 
-  @ApiPropertyOptional({
-    description:
-      'Konfigurasi spesifik metode pembayaran (misal: API keys). Tidak untuk ditampilkan di frontend. [isPrivate]',
-  })
-  config?: any;
+  // REVISI: Properti 'config' yang sensitif DIHAPUS dari DTO.
+  // Data ini tidak seharusnya pernah dikirim ke client.
 }
 
 // DTO untuk setiap item dalam pesanan
 class OrderItemInOrderDto {
-  @ApiProperty()
+  @ApiProperty({ example: 201 })
   id: number;
 
-  @ApiProperty()
+  @ApiProperty({ example: 2 })
   qty: number;
 
-  @ApiProperty({ description: 'Harga satuan produk pada saat order.' })
+  @ApiProperty({ description: 'Harga satuan produk pada saat order.', example: 150000 })
   price: number;
 
-  @ApiProperty({ description: 'Subtotal untuk item ini (price * qty).' })
+  @ApiProperty({ description: 'Subtotal untuk item ini (price * qty).', example: 300000 })
   subtotal: number;
 
   @ApiPropertyOptional({
@@ -61,43 +66,49 @@ class OrderItemInOrderDto {
   })
   product?: ProductInOrderDto;
 
-  @ApiProperty({ description: 'Snapshot nama produk saat order dibuat.' })
-  productName: any; // Tipe 'any' untuk JSON dari Prisma
+  @ApiProperty({ 
+    description: 'Snapshot nama produk saat order dibuat.',
+    type: MultiLanguageNameDto,
+  })
+  productName: MultiLanguageNameDto; // REVISI: Menggunakan tipe yang jelas
 
-  @ApiProperty({ description: 'Snapshot varian produk saat order dibuat.' })
-  productVariant: any; // Tipe 'any' untuk JSON dari Prisma
+  @ApiPropertyOptional({ 
+    description: 'Snapshot varian produk saat order dibuat.',
+    type: MultiLanguageNameDto,
+  })
+  productVariant?: MultiLanguageNameDto; // REVISI: Menggunakan tipe yang jelas
 
   @ApiPropertyOptional({
     description: 'Snapshot URL gambar produk saat order dibuat.',
+    example: 'https://example.com/product.jpg',
   })
   productImage?: string;
 }
 
 // DTO utama untuk respons order
 export class OrderResponseDto {
-  @ApiProperty()
+  @ApiProperty({ example: 501 })
   id: number;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'Jl. Merdeka No. 45, Bandung' })
   address: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: 15000 })
   shippingCost: number;
 
-  @ApiProperty()
+  @ApiProperty({ example: 300000 })
   subtotal: number;
 
-  @ApiProperty()
+  @ApiProperty({ example: 315000 })
   total: number;
   
-  // --- DITAMBAHKAN ---
-  @ApiProperty({ description: 'Kode mata uang yang digunakan untuk pesanan ini (e.g., "IDR", "USD").', example: 'IDR' })
+  @ApiProperty({ description: 'Kode mata uang (ISO 4217).', example: 'IDR' })
   currencyCode: string;
 
-  @ApiProperty({ enum: PaymentStatus })
+  @ApiProperty({ enum: PaymentStatus, example: PaymentStatus.PAID })
   paymentStatus: PaymentStatus;
 
-  @ApiProperty({ enum: OrderStatus })
+  @ApiProperty({ enum: OrderStatus, example: OrderStatus.PROCESSING })
   orderStatus: OrderStatus;
 
   @ApiProperty()
