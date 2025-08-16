@@ -2,7 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrderResponseDto } from '../orders/dto/order-response.dto';
 import * as PDFDocument from 'pdfkit';
-import axios from 'axios';
+import * as fs from 'fs';
+import * as path from 'path';
 
 // Definisikan tipe data untuk laporan keuangan agar lebih jelas
 interface FinanceReportData {
@@ -80,13 +81,11 @@ export class PdfService {
     // --- SISI KANAN: Logo Perusahaan ---
     if (settings?.logoUrl) {
       try {
-        const response = await axios.get(settings.logoUrl, { responseType: 'arraybuffer' });
-        const logoBuffer = Buffer.from(response.data, 'binary');
-        // Kalkulasi posisi X agar logo berada di pojok kanan
-        // Lebar halaman A4 (595) - margin kanan (50) - lebar logo (50) = 495
+        const logoPath = path.join(process.cwd(), settings.logoUrl);
+        const logoBuffer = fs.readFileSync(logoPath);
         doc.image(logoBuffer, 495, 45, { width: 50 });
       } catch (error) {
-        this.logger.error('Gagal mengambil gambar logo.', error.stack);
+        this.logger.error(`Gagal membaca file logo dari path: ${settings.logoUrl}. Pastikan file ada dan path benar.`, error.message);
       }
     }
   }
