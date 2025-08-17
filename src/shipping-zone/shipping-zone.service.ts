@@ -20,43 +20,66 @@ export class ShippingZoneService {
     });
   }
 
+  /**
+   * REVISI UTAMA DI FUNGSI INI
+   * Query sekarang menyertakan semua data relasi yang dibutuhkan frontend.
+   */
   async findAll() {
     return this.prisma.shippingZone.findMany({
       include: {
-        prices: { include: { currency: true } },
-        rates: true // <-- MASALAHNYA DI SINI! Anda hanya mengambil 'rates', bukan 'prices' di dalamnya.
+        // 1. Sertakan harga default untuk zona itu sendiri
+        prices: { 
+          include: { currency: true } 
+        },
+        // 2. Sertakan semua tarif/kota di dalam zona ini
+        rates: {
+          include: {
+            // 3. Di dalam setiap tarif, sertakan juga harganya
+            prices: {
+              include: {
+                currency: true, // Dan di dalam setiap harga, sertakan detail mata uangnya
+              },
+            },
+          },
+        },
       },
       orderBy: { createdAt: 'desc' }
     });
-  } 
+  }
 
   async findOne(id: number) {
     const data = await this.prisma.shippingZone.findUnique({
       where: { id },
-      include: { prices: { include: { currency: true } }, rates: true }
+      // Terapkan include yang sama di sini untuk konsistensi
+      include: { 
+        prices: { include: { currency: true } }, 
+        rates: {
+          include: {
+            prices: {
+              include: { currency: true }
+            }
+          }
+        } 
+      }
     });
     if (!data) throw new NotFoundException('Shipping Zone not found');
     return data;
   }
 
   async update(id: number, dto: UpdateShippingZoneDto) {
-    // Pastikan zona yang akan diupdate ada
     const zone = await this.prisma.shippingZone.findUnique({ where: { id } });
     if (!zone) {
       throw new NotFoundException(`Shipping Zone with ID ${id} not found.`);
     }
 
-    // Gunakan satu operasi update dengan nested writes untuk atomicity
     return this.prisma.shippingZone.update({
       where: { id },
       data: {
-        // Update nama dan status jika ada di DTO
         name: dto.name,
         isActive: dto.isActive,
-        // Jika ada 'prices' di DTO, hapus yang lama dan buat yang baru
         ...(dto.prices && {
           prices: {
-            deleteMany: {}, // Hapus semua harga yang terkait dengan zona ini
+            deleteMany: {},
             create: dto.prices.map(p => ({
               currencyId: p.currencyId,
               price: p.price,
@@ -64,21 +87,40 @@ export class ShippingZoneService {
           },
         }),
       },
-      include: { prices: { include: { currency: true } }, rates: true }
+      // Terapkan include yang sama di sini juga
+      include: { 
+        prices: { include: { currency: true } },
+        rates: {
+          include: {
+            prices: {
+              include: { currency: true }
+            }
+          }
+        }
+      }
     });
   }
 
   async remove(id: number) {
-    // Gunakan $transaction untuk memastikan semua relasi terhapus sebelum zona dihapus
     return this.prisma.$transaction(async (tx) => {
-      await tx.shippingZonePrice.deleteMany({ where: { shippingZoneId: id } });
-      // Anda mungkin juga perlu menghapus atau menangani 'shipping rates' yang terkait
+      // Hapus harga dari setiap tarif terlebih dahulu
+      const rates = await tx.shippingRate.findMany({ where: { zoneId: id } });
+      for (const rate of rates) {
+        await tx.shippingRatePrice.deleteMany({ where: { shippingRateId: rate.id } });
+      }
+      
+      // Hapus tarifnya
       await tx.shippingRate.deleteMany({ where: { zoneId: id } });
+      
+      // Hapus harga zona
+      await tx.shippingZonePrice.deleteMany({ where: { shippingZoneId: id } });
+      
+      // Terakhir, hapus zonanya
       return tx.shippingZone.delete({ where: { id } });
     });
   }
 
-  async findAllActive() {
+   async findAllActive() {
     return this.prisma.shippingZone.findMany({
       where: { isActive: true },
       include: {
