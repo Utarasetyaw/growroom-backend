@@ -22,10 +22,13 @@ export class ShippingZoneService {
 
   async findAll() {
     return this.prisma.shippingZone.findMany({
-      include: { prices: { include: { currency: true } }, rates: true },
+      include: {
+        prices: { include: { currency: true } },
+        rates: true // <-- MASALAHNYA DI SINI! Anda hanya mengambil 'rates', bukan 'prices' di dalamnya.
+      },
       orderBy: { createdAt: 'desc' }
     });
-  }
+  } 
 
   async findOne(id: number) {
     const data = await this.prisma.shippingZone.findUnique({
@@ -75,7 +78,7 @@ export class ShippingZoneService {
     });
   }
 
-   async findAllActive() {
+  async findAllActive() {
     return this.prisma.shippingZone.findMany({
       where: { isActive: true },
       include: {
