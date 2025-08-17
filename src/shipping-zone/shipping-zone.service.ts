@@ -25,19 +25,18 @@ export class ShippingZoneService {
    * Query sekarang menyertakan semua data relasi yang dibutuhkan frontend.
    */
   async findAll() {
-    return this.prisma.shippingZone.findMany({
+    console.log('Mencoba mengambil data zona pengiriman...'); // Log Awal
+
+    const zones = await this.prisma.shippingZone.findMany({
       include: {
-        // 1. Sertakan harga default untuk zona itu sendiri
-        prices: { 
-          include: { currency: true } 
+        prices: {
+          include: { currency: true }
         },
-        // 2. Sertakan semua tarif/kota di dalam zona ini
         rates: {
           include: {
-            // 3. Di dalam setiap tarif, sertakan juga harganya
             prices: {
               include: {
-                currency: true, // Dan di dalam setiap harga, sertakan detail mata uangnya
+                currency: true,
               },
             },
           },
@@ -45,21 +44,27 @@ export class ShippingZoneService {
       },
       orderBy: { createdAt: 'desc' }
     });
+
+    // === TAMBAHKAN LOG INI UNTUK DEBUGGING ===
+    // Ini akan menampilkan data APA ADANYA dari Prisma di terminal backend Anda
+    console.log('Data mentah dari Prisma:', JSON.stringify(zones, null, 2));
+
+    return zones;
   }
 
   async findOne(id: number) {
     const data = await this.prisma.shippingZone.findUnique({
       where: { id },
       // Terapkan include yang sama di sini untuk konsistensi
-      include: { 
-        prices: { include: { currency: true } }, 
+      include: {
+        prices: { include: { currency: true } },
         rates: {
           include: {
             prices: {
               include: { currency: true }
             }
           }
-        } 
+        }
       }
     });
     if (!data) throw new NotFoundException('Shipping Zone not found');
@@ -88,7 +93,7 @@ export class ShippingZoneService {
         }),
       },
       // Terapkan include yang sama di sini juga
-      include: { 
+      include: {
         prices: { include: { currency: true } },
         rates: {
           include: {
@@ -108,19 +113,19 @@ export class ShippingZoneService {
       for (const rate of rates) {
         await tx.shippingRatePrice.deleteMany({ where: { shippingRateId: rate.id } });
       }
-      
+
       // Hapus tarifnya
       await tx.shippingRate.deleteMany({ where: { zoneId: id } });
-      
+
       // Hapus harga zona
       await tx.shippingZonePrice.deleteMany({ where: { shippingZoneId: id } });
-      
+
       // Terakhir, hapus zonanya
       return tx.shippingZone.delete({ where: { id } });
     });
   }
 
-   async findAllActive() {
+  async findAllActive() {
     return this.prisma.shippingZone.findMany({
       where: { isActive: true },
       include: {
