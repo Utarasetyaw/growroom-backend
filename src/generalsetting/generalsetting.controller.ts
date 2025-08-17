@@ -19,7 +19,7 @@ import { Public } from '../auth/decorators/public.decorator';
 
 @ApiTags('General Settings')
 // 2. Ubah path controller agar konsisten dengan panggilan frontend
-@Controller('general-settings')
+@Controller('generalsettings')
 export class GeneralsettingController {
   constructor(private readonly service: GeneralsettingService) {}
   
@@ -85,7 +85,7 @@ export class GeneralsettingController {
     return this.service.update(data);
   }
 
-  @Patch('shipping-mode')
+  @Patch('shippingmode')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.OWNER)
   @ApiBearerAuth()
