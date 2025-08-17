@@ -1,9 +1,26 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 
-class CurrencyInZoneDto { @ApiProperty() id: number; @ApiProperty() code: string; }
-class PriceInZoneDto { @ApiProperty() id: number; @ApiProperty() price: number; @ApiProperty({ type: CurrencyInZoneDto }) currency: CurrencyInZoneDto; }
-class RateInZoneDto { @ApiProperty() id: number; @ApiProperty() city: string; }
+// DTO parsial untuk data yang di-nest
+class CurrencyInPriceDto {
+    @ApiProperty() code: string;
+}
+class PriceDto {
+    @ApiProperty() price: number;
+    @ApiProperty({ type: () => CurrencyInPriceDto })
+    @Type(() => CurrencyInPriceDto)
+    currency: CurrencyInPriceDto;
+}
+class RateInZoneDto {
+    @ApiProperty() id: number;
+    @ApiProperty() city: string;
 
+    @ApiProperty({ type: () => [PriceDto] })
+    @Type(() => PriceDto)
+    prices: PriceDto[];
+}
+
+// DTO utama
 export class ShippingZoneResponseDto {
   @ApiProperty()
   id: number;
@@ -20,9 +37,11 @@ export class ShippingZoneResponseDto {
   @ApiProperty()
   updatedAt: Date;
   
-  @ApiProperty({ type: [PriceInZoneDto] })
-  prices: PriceInZoneDto[];
+  @ApiProperty({ type: () => [PriceDto] })
+  @Type(() => PriceDto)
+  prices: PriceDto[];
 
-  @ApiProperty({ type: [RateInZoneDto] })
+  @ApiProperty({ type: () => [RateInZoneDto] })
+  @Type(() => RateInZoneDto)
   rates: RateInZoneDto[];
 }

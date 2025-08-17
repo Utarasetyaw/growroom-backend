@@ -8,7 +8,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '@prisma/client';
 import { LanguageResponseDto } from './dto/language-response.dto';
 
-@ApiTags('Languages')
+@ApiTags('languages')
 @ApiBearerAuth()
 @Controller('languages')
 @UseGuards(JwtAuthGuard, RolesGuard)

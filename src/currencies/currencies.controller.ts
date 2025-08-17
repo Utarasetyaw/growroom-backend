@@ -8,7 +8,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '@prisma/client';
 import { CurrencyResponseDto } from './dto/currency-response.dto';
 
-@ApiTags('Currencies')
+@ApiTags('currencies')
 @ApiBearerAuth()
 @Controller('currencies')
 @UseGuards(JwtAuthGuard, RolesGuard)
