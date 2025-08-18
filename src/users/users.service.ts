@@ -18,8 +18,16 @@ export class UsersService {
     });
   }
 
-  async findOne(id: number): Promise<User> {
-    const user = await this.prisma.user.findUnique({ where: { id } });
+  async findOne(id: number): Promise<User & { orders?: any[] }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      // 👇 PERUBAHAN UTAMA DI SINI
+      include: {
+        orders: {
+          orderBy: { createdAt: 'desc' }, // Mengurutkan pesanan terbaru
+        },
+      },
+    });
     if (!user) throw new NotFoundException('User not found');
     return user;
   }
@@ -60,16 +68,13 @@ export class UsersService {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: {
-        // 👇 REVISI BAGIAN INI
         orders: {
           include: {
-            // Sertakan item di dalam setiap order
             orderItems: {
               include: {
-                // Sertakan detail produk di dalam setiap item
                 product: {
                   include: {
-                    images: { take: 1 }, // Ambil 1 gambar produk
+                    images: { take: 1 },
                   },
                 },
               },
@@ -104,7 +109,6 @@ export class UsersService {
     return this.prisma.user.update({
       where: { id: userId },
       data,
-      // Pilih field yang akan dikembalikan, pastikan tidak ada password
       select: {
         id: true, email: true, name: true, phone: true, address: true,
         socialMedia: true, updatedAt: true,
