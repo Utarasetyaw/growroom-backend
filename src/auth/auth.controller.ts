@@ -1,11 +1,12 @@
-import { Controller, Post, Body, UnauthorizedException, HttpStatus } from '@nestjs/common';
+// src/auth/auth.controller.ts
+
+import { Controller, Post, Body, HttpStatus, HttpCode, Res } from '@nestjs/common';
+import { Response } from 'express';
 import {
   ApiTags,
   ApiOperation,
   ApiResponse,
   ApiBody,
-  ApiUnauthorizedResponse,
-  ApiBadRequestResponse,
 } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
@@ -19,67 +20,75 @@ import { RegisterResponseDto } from './dto/register-response.dto';
 export class AuthController {
   constructor(private authService: AuthService) {}
 
+  // Helper function untuk menangani logika login
+  private async handleLogin(res: Response, loginDto: LoginDto, role: Role) {
+    const validationResult = await this.authService.validateLoginAttempt(
+      loginDto.email,
+      loginDto.password,
+      role,
+    );
+
+    if (!validationResult.success) {
+      // Jika validasi gagal, kirim pesan error dengan status 200 OK
+      return res.status(HttpStatus.OK).json({
+        success: false,
+        message: validationResult.message,
+      });
+    }
+
+    // Jika berhasil, buat token dan kirim respons sukses
+    if (!validationResult.user) {
+      return res.status(HttpStatus.OK).json({
+        success: false,
+        message: 'User data not found after validation.',
+      });
+    }
+    const loginData = await this.authService.login(validationResult.user);
+    return res.status(HttpStatus.OK).json({
+        success: true,
+        ...loginData
+    });
+  }
+
   @Post('login-user')
+  @HttpCode(HttpStatus.OK) // Selalu kembalikan 200 OK
   @ApiOperation({ summary: 'Login untuk role USER' })
   @ApiBody({ type: LoginDto })
-  @ApiResponse({ status: HttpStatus.CREATED, description: 'Login berhasil.', type: LoginResponseDto })
-  @ApiUnauthorizedResponse({ description: 'Email/password salah atau bukan role USER.' })
-  async loginUser(@Body() loginDto: LoginDto) {
-    // 👇 Kirim 'Role.USER' sebagai argumen ketiga
-    const user = await this.authService.validateUser(loginDto.email, loginDto.password, Role.USER);
-    if (!user) {
-      throw new UnauthorizedException('Invalid credentials or not a USER role');
-    }
-    // 👇 Kirim 'Role.USER' sebagai argumen kedua
-    return this.authService.login(user, Role.USER);
+  @ApiResponse({ status: HttpStatus.OK, description: 'Percobaan login diproses.', type: LoginResponseDto })
+  async loginUser(@Body() loginDto: LoginDto, @Res() res: Response) {
+    return this.handleLogin(res, loginDto, Role.USER);
   }
 
   @Post('login-admin')
+  @HttpCode(HttpStatus.OK) // Selalu kembalikan 200 OK
   @ApiOperation({ summary: 'Login untuk role ADMIN' })
   @ApiBody({ type: LoginDto })
-  @ApiResponse({ status: HttpStatus.CREATED, description: 'Login berhasil.', type: LoginResponseDto })
-  @ApiUnauthorizedResponse({ description: 'Email/password salah atau bukan role ADMIN.' })
-  async loginAdmin(@Body() loginDto: LoginDto) {
-    // 👇 Kirim 'Role.ADMIN' sebagai argumen ketiga
-    const user = await this.authService.validateUser(loginDto.email, loginDto.password, Role.ADMIN);
-    if (!user) {
-      throw new UnauthorizedException('Invalid credentials or not an ADMIN role');
-    }
-    // 👇 Kirim 'Role.ADMIN' sebagai argumen kedua
-    return this.authService.login(user, Role.ADMIN);
+  @ApiResponse({ status: HttpStatus.OK, description: 'Percobaan login diproses.', type: LoginResponseDto })
+  async loginAdmin(@Body() loginDto: LoginDto, @Res() res: Response) {
+    return this.handleLogin(res, loginDto, Role.ADMIN);
   }
 
   @Post('login-owner')
+  @HttpCode(HttpStatus.OK) // Selalu kembalikan 200 OK
   @ApiOperation({ summary: 'Login untuk role OWNER' })
   @ApiBody({ type: LoginDto })
-  @ApiResponse({ status: HttpStatus.CREATED, description: 'Login berhasil.', type: LoginResponseDto })
-  @ApiUnauthorizedResponse({ description: 'Email/password salah atau bukan role OWNER.' })
-  async loginOwner(@Body() loginDto: LoginDto) {
-    // 👇 Kirim 'Role.OWNER' sebagai argumen ketiga
-    const user = await this.authService.validateUser(loginDto.email, loginDto.password, Role.OWNER);
-    if (!user) {
-      throw new UnauthorizedException('Invalid credentials or not an OWNER role');
-    }
-    // 👇 Kirim 'Role.OWNER' sebagai argumen kedua
-    return this.authService.login(user, Role.OWNER);
+  @ApiResponse({ status: HttpStatus.OK, description: 'Percobaan login diproses.', type: LoginResponseDto })
+  async loginOwner(@Body() loginDto: LoginDto, @Res() res: Response) {
+    return this.handleLogin(res, loginDto, Role.OWNER);
   }
 
   @Post('register-user')
   @ApiOperation({ summary: 'Registrasi akun baru sebagai USER' })
   @ApiBody({ type: RegisterDto })
   @ApiResponse({ status: HttpStatus.CREATED, description: 'Registrasi berhasil.', type: RegisterResponseDto })
-  @ApiBadRequestResponse({ description: 'Email sudah terdaftar.' })
   async registerUser(@Body() dto: RegisterDto) {
-    // Kode ini sudah benar, tidak perlu diubah
     return this.authService.register({ ...dto, role: Role.USER }, Role.USER);
   }
 
-  // Anda bisa menghapus endpoint register untuk Admin dan Owner jika tidak diperlukan dari publik
   @Post('register-admin')
   @ApiOperation({ summary: 'Registrasi akun baru sebagai ADMIN (biasanya tidak publik)' })
   @ApiBody({ type: RegisterDto })
   @ApiResponse({ status: HttpStatus.CREATED, description: 'Registrasi berhasil.', type: RegisterResponseDto })
-  @ApiBadRequestResponse({ description: 'Email sudah terdaftar.' })
   async registerAdmin(@Body() dto: RegisterDto) {
     return this.authService.register({ ...dto, role: Role.ADMIN }, Role.ADMIN);
   }
@@ -88,7 +97,6 @@ export class AuthController {
   @ApiOperation({ summary: 'Registrasi akun baru sebagai OWNER (biasanya tidak publik)' })
   @ApiBody({ type: RegisterDto })
   @ApiResponse({ status: HttpStatus.CREATED, description: 'Registrasi berhasil.', type: RegisterResponseDto })
-  @ApiBadRequestResponse({ description: 'Email sudah terdaftar.' })
   async registerOwner(@Body() dto: RegisterDto) {
     return this.authService.register({ ...dto, role: Role.OWNER }, Role.OWNER);
   }

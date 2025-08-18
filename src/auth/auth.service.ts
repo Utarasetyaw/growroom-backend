@@ -1,9 +1,18 @@
-import { Injectable, BadRequestException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+// src/auth/service.ts
+
+import { Injectable, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { Role, User } from '@prisma/client';
+
+// Definisikan tipe untuk hasil validasi
+export interface LoginValidationResult {
+  success: boolean;
+  message: string;
+  user?: Omit<User, 'password'>;
+}
 
 @Injectable()
 export class AuthService {
@@ -14,47 +23,53 @@ export class AuthService {
   ) {}
 
   /**
-   * Memvalidasi user berdasarkan email, password, DAN role yang diharapkan.
+   * Memvalidasi percobaan login dan mengembalikan hasil yang terstruktur.
+   * Tidak melempar error, tetapi mengembalikan objek status.
    */
-  async validateUser(email: string, pass: string, expectedRole: Role): Promise<any> {
+  async validateLoginAttempt(email: string, pass: string, expectedRole: Role): Promise<LoginValidationResult> {
     const user = await this.usersService.findOneByEmail(email);
-    // Cek user ada, password cocok, DAN role-nya sesuai
-    if (user && user.role === expectedRole && (await bcrypt.compare(pass, user.password))) {
-      const { password, ...result } = user;
-      return result;
+
+    // Kasus 1: Email tidak ditemukan
+    if (!user) {
+      return { success: false, message: 'Email not found' };
     }
-    return null;
+
+    // Kasus 2: Password tidak cocok
+    const isPasswordMatch = await bcrypt.compare(pass, user.password);
+    if (!isPasswordMatch) {
+      return { success: false, message: 'Incorrect password' };
+    }
+
+    // Kasus 3: Role tidak sesuai
+    if (user.role !== expectedRole) {
+      return { success: false, message: `Access denied. This login is for ${expectedRole}s only.` };
+    }
+
+    // Kasus 4: Login berhasil
+    const { password, ...result } = user;
+    return { success: true, message: 'Login successful', user: result };
   }
 
   /**
-   * Membuat token JWT untuk user yang sudah tervalidasi.
+   * Membuat token JWT HANYA jika validasi berhasil.
    */
-  async login(user: User, expectedRole: Role) {
-    // Validasi tambahan untuk memastikan role-nya benar
-    if (user.role !== expectedRole) {
-      throw new UnauthorizedException(`This login is for ${expectedRole}s only.`);
-    }
-
-    // 👇 INI BAGIAN PALING PENTING
-    // Payload harus berisi 'sub' yang diisi dengan 'user.id'
+  async login(user: Omit<User, 'password'>) {
     const payload = {
       email: user.email,
-      sub: user.id, // 'sub' akan dibaca sebagai 'userId' oleh JwtStrategy
+      sub: user.id,
       role: user.role,
       permissions: user.permissions,
     };
-    
-    const { password, ...userProfile } = user;
 
     return {
       message: 'Login successful',
       access_token: this.jwtService.sign(payload),
-      user: userProfile,
+      user: user,
     };
   }
 
   /**
-   * Registrasi user baru.
+   * Registrasi user baru. (Tidak ada perubahan di sini)
    */
   async register(data: any, allowedRole: Role) {
     const existingUser = await this.usersService.findOneByEmail(data.email);
