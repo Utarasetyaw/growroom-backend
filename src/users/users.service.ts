@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Role, User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { UpdateMyProfileDto } from './dto/update-my-profile.dto'; // <-- 1. Impor DTO yang baru
 
 @Injectable()
 export class UsersService {
@@ -21,10 +22,9 @@ export class UsersService {
   async findOne(id: number): Promise<User & { orders?: any[] }> {
     const user = await this.prisma.user.findUnique({
       where: { id },
-      // 👇 PERUBAHAN UTAMA DI SINI
       include: {
         orders: {
-          orderBy: { createdAt: 'desc' }, // Mengurutkan pesanan terbaru
+          orderBy: { createdAt: 'desc' },
         },
       },
     });
@@ -59,11 +59,6 @@ export class UsersService {
 
   // ================== PROFILE USER (me) ==================
 
-  /**
-   * Mengambil data profil lengkap untuk user yang sedang login,
-   * termasuk riwayat order dan isi keranjang.
-   * @param userId ID dari user yang sedang login
-   */
   async findMe(userId: number) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -102,13 +97,21 @@ export class UsersService {
    * @param userId ID dari user yang sedang login
    * @param data Data yang akan diupdate
    */
-  async updateMe(userId: number, data: any) {
+  // --- PERBAIKAN DI SINI ---
+  async updateMe(userId: number, data: UpdateMyProfileDto) {
+    const updateData: any = { ...data };
+
     if (data.password) {
-      data.password = await bcrypt.hash(data.password, 10);
+      updateData.password = await bcrypt.hash(data.password, 10);
+    } else {
+      delete updateData.password; // Pastikan password kosong tidak menimpa yang sudah ada
     }
+
+    // Prisma akan secara otomatis menangani objek `address` dan `socialMedia`
+    // dan menyimpannya sebagai JSON di database.
     return this.prisma.user.update({
       where: { id: userId },
-      data,
+      data: updateData,
       select: {
         id: true, email: true, name: true, phone: true, address: true,
         socialMedia: true, updatedAt: true,

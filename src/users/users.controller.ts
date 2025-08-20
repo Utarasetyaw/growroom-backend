@@ -38,9 +38,9 @@ export class UsersController {
 
   @Patch('me')
   @ApiOperation({ summary: 'Memperbarui data profil user yang sedang login' })
-  @ApiBody({ type: UpdateMyProfileDto })
+  @ApiBody({ type: UpdateMyProfileDto }) // <-- Sudah benar menggunakan DTO baru
   @ApiResponse({ status: 200, description: 'Data profil yang telah diperbarui.', type: UserResponseDto })
-  async patchMe(@Req() req: RequestWithUser, @Body() body: UpdateMyProfileDto) {
+  async patchMe(@Req() req: RequestWithUser, @Body() body: UpdateMyProfileDto) { // <-- Sudah benar menggunakan DTO baru
     const userId = req.user.userId;
     console.log('[PATCH /users/me] UserID:', userId, 'Body:', body);
     const result = await this.usersService.updateMe(userId, body);
