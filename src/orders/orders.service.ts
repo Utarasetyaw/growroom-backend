@@ -91,66 +91,78 @@ export class OrdersService {
 
     switch (paymentMethod.code) {
       case 'midtrans': {
-        const orderIdForMidtrans = `ORDER-${userId}-${Date.now()}`;
-        const itemDetailsForMidtrans = dto.orderItems.map((item) => {
-          const product = totals.productMap.get(item.productId);
-          // PERBAIKAN: Tambahkan pengecekan eksplisit di dalam map untuk memuaskan TypeScript
-          if (!product || !product.prices[0]) {
-            throw new BadRequestException(`Detail produk atau harga untuk ID ${item.productId} tidak valid.`);
+        // PERBAIKAN: Tambahkan blok try...catch untuk menangani error dari Midtrans
+        try {
+          const orderIdForMidtrans = `ORDER-${userId}-${Date.now()}`;
+          const itemDetailsForMidtrans = dto.orderItems.map((item) => {
+            const product = totals.productMap.get(item.productId);
+            if (!product || !product.prices[0]) {
+              throw new BadRequestException(`Detail produk atau harga untuk ID ${item.productId} tidak valid.`);
+            }
+            return {
+              id: `PROD-${item.productId}`,
+              price: Math.round(product.prices[0].price),
+              quantity: item.qty,
+              name: (product.name as any)?.en || 'Product',
+            };
+          });
+          if (totals.shippingCost > 0) {
+            itemDetailsForMidtrans.push({ id: 'SHIPPING', price: Math.round(totals.shippingCost), quantity: 1, name: 'Shipping Cost' });
           }
+          
+          const paymentResponse = await this.midtransService.createTransaction(
+            orderIdForMidtrans,
+            totals.total,
+            itemDetailsForMidtrans,
+            { name: user.name, email: user.email },
+            paymentMethod.id,
+          );
+          
+          const order = await this._saveOrderToDb({ ...dto, ...totals, userId, midtransOrderId: orderIdForMidtrans });
+          await this._sendTelegramNotification(order);
+          
           return {
-            id: `PROD-${item.productId}`,
-            price: Math.round(product.prices[0].price),
-            quantity: item.qty,
-            name: (product.name as any)?.en || 'Product',
+            paymentType: 'MIDTRANS',
+            snapToken: paymentResponse.snapToken,
+            redirectUrl: paymentResponse.redirectUrl,
+            internalOrderId: order.id,
           };
-        });
-        if (totals.shippingCost > 0) {
-          itemDetailsForMidtrans.push({ id: 'SHIPPING', price: Math.round(totals.shippingCost), quantity: 1, name: 'Shipping Cost' });
+        } catch (error) {
+          // Tangkap error (misal: kunci server salah) dan berikan pesan yang ramah pengguna
+          this.logger.error(`[Midtrans Create] Gagal membuat transaksi: ${error.message}`, error.stack);
+          throw new BadRequestException(
+            'Metode pembayaran ini sedang dalam pemeliharaan. Silakan hubungi admin atau coba metode lain.',
+          );
         }
-        
-        const paymentResponse = await this.midtransService.createTransaction(
-          orderIdForMidtrans,
-          totals.total,
-          itemDetailsForMidtrans,
-          { name: user.name, email: user.email },
-          paymentMethod.id,
-        );
-        
-        // Simpan order ke DB dengan status PENDING
-        const order = await this._saveOrderToDb({ ...dto, ...totals, userId, midtransOrderId: orderIdForMidtrans });
-        await this._sendTelegramNotification(order);
-        
-        return {
-          paymentType: 'MIDTRANS',
-          snapToken: paymentResponse.snapToken,
-          redirectUrl: paymentResponse.redirectUrl,
-          internalOrderId: order.id,
-        };
       }
 
       case 'paypal': {
-        // Alur PayPal: Hanya buat order di server PayPal, JANGAN simpan ke DB dulu.
-        const refIdForPaypal = `PAYPAL-TEMP-${userId}-${Date.now()}`;
-        const paypalOrderResponse = await this.paypalService.createPaypalOrder(
-          totals.total,
-          dto.currencyCode,
-          paymentMethod.id,
-          refIdForPaypal,
-        );
-        
-        // Kembalikan ID PayPal ke frontend agar bisa memulai pembayaran.
-        // Order internal belum dibuat sama sekali pada tahap ini.
-        return {
-          paymentType: 'PAYPAL_CHECKOUT',
-          paypalOrderId: paypalOrderResponse.id,
-        };
+        // PERBAIKAN: Tambahkan blok try...catch untuk menangani error dari PayPal
+        try {
+          const refIdForPaypal = `PAYPAL-TEMP-${userId}-${Date.now()}`;
+          const paypalOrderResponse = await this.paypalService.createPaypalOrder(
+            totals.total,
+            dto.currencyCode,
+            paymentMethod.id,
+            refIdForPaypal,
+          );
+          
+          return {
+            paymentType: 'PAYPAL_CHECKOUT',
+            paypalOrderId: paypalOrderResponse.id,
+          };
+        } catch (error) {
+          // Tangkap error (misal: client ID/secret salah) dan berikan pesan yang ramah pengguna
+          this.logger.error(`[PayPal Create] Gagal membuat order: ${error.message}`, error.stack);
+          throw new BadRequestException(
+            'Metode pembayaran ini sedang dalam pemeliharaan. Silakan hubungi admin atau coba metode lain.',
+          );
+        }
       }
 
       case 'bank_transfer':
       case 'wise':
       case 'pay_later': {
-        // Alur pembayaran manual/tunda: Langsung simpan ke DB dengan status PENDING.
         const order = await this._saveOrderToDb({ ...dto, ...totals, userId });
         await this._sendTelegramNotification(order);
 
@@ -183,10 +195,8 @@ export class OrdersService {
   ): Promise<OrderResponseDto> {
     this.logger.log(`[PayPal Finalize] Creating internal order for PayPal Order ID: ${paypalCaptureDetails.id}`);
     
-    // Lakukan validasi ulang total dan stok sebagai lapisan keamanan tambahan
     const totals = await this._calculateTotals(dto);
 
-    // Siapkan payload untuk menyimpan order
     const finalOrderPayload: SaveOrderPayload = {
       ...dto,
       ...totals,
@@ -195,11 +205,9 @@ export class OrdersService {
       paypalCaptureDetails: paypalCaptureDetails,
     };
     
-    // Panggil _saveOrderToDb dengan flag 'isPaid' = true
     const order = await this._saveOrderToDb(finalOrderPayload, true);
     await this._sendTelegramNotification(order);
     
-    // PERBAIKAN: Tambahkan pengecekan null untuk memastikan tipe kembalian sesuai promise
     const orderDto = mapOrderToDto(order);
     if (!orderDto) {
       this.logger.error(`Gagal memetakan order #${order.id} yang baru dibuat ke DTO.`);
@@ -219,7 +227,6 @@ export class OrdersService {
     paymentDueDate.setDate(paymentDueDate.getDate() + 2);
 
     return this.prisma.$transaction(async (tx) => {
-      // Kurangi stok produk
       for (const item of orderItems) {
         await tx.product.update({
           where: { id: item.productId },
@@ -227,7 +234,6 @@ export class OrdersService {
         });
       }
 
-      // Buat entri order di database
       const newOrder = await tx.order.create({
         data: {
           userId,
@@ -235,16 +241,13 @@ export class OrdersService {
           shippingCost,
           subtotal,
           total,
-          // Tentukan status berdasarkan flag 'isPaid'
           paymentStatus: isPaid ? PaymentStatus.PAID : PaymentStatus.PENDING,
           orderStatus: isPaid ? OrderStatus.PROCESSING : OrderStatus.PENDING_PAYMENT,
           paymentMethodId,
-          // Jika sudah lunas, tidak perlu tanggal jatuh tempo
           paymentDueDate: isPaid ? null : paymentDueDate,
           currencyCode,
           midtransOrderId,
           paypalOrderId,
-          // Simpan detail pembayaran jika ada (khususnya untuk PayPal yang sudah lunas)
           paymentDetails: paypalCaptureDetails ? {
             paypalOrderId: paypalCaptureDetails.id,
             captureId: paypalCaptureDetails.purchase_units?.[0]?.payments?.captures?.[0]?.id,
@@ -255,7 +258,6 @@ export class OrdersService {
             create: orderItems.map((item) => {
               const product = productMap.get(item.productId);
               if (!product || !product.prices[0]) {
-                // Pengecekan ini seharusnya sudah dilakukan sebelumnya, tapi sebagai pengaman
                 throw new InternalServerErrorException(`Produk ${item.productId} tidak valid saat menyimpan item order.`);
               }
               return {
@@ -273,7 +275,6 @@ export class OrdersService {
         include: { user: true, orderItems: { include: { product: true } }, paymentMethod: true },
       });
 
-      // Kosongkan keranjang pengguna
       await this.cartService.clearCart(userId);
       return newOrder;
     });
@@ -412,11 +413,7 @@ export class OrdersService {
     
     const order = await this.prisma.order.findFirst({
       where: { id: orderId, userId },
-      include: { 
-        user: true, 
-        paymentMethod: true, 
-        orderItems: { include: { product: true } } 
-      },
+      include: { user: true, paymentMethod: true, orderItems: true },
     });
 
     if (!order) {
@@ -480,7 +477,19 @@ export class OrdersService {
             amount: order.total, 
             paymentDueDate: order.paymentDueDate 
         };
-        const mappedOrder = mapOrderToDto(order);
+        // Fetch products for each order item to satisfy the DTO requirements
+        const orderWithProducts = {
+            ...order,
+            orderItems: await Promise.all(
+                order.orderItems.map(async (item) => ({
+                    ...item,
+                    product: item.productId
+                        ? await this.prisma.product.findUnique({ where: { id: item.productId } })
+                        : null,
+                }))
+            ),
+        };
+        const mappedOrder = mapOrderToDto(orderWithProducts as OrderWithDetails);
         if (!mappedOrder) {
             throw new InternalServerErrorException('Gagal memproses detail order.');
         }
