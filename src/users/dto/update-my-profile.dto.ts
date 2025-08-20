@@ -34,6 +34,12 @@ class AddressDto {
     @IsOptional()
     street?: string;
 
+    // --- PERBAIKAN DI SINI ---
+    @ApiPropertyOptional({ description: "Kecamatan" })
+    @IsString()
+    @IsOptional()
+    district?: string;
+
     @ApiPropertyOptional({ description: "Kota" })
     @IsString()
     @IsOptional()
