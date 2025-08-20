@@ -20,18 +20,7 @@ async function bootstrap() {
   app.useStaticAssets(join(__dirname, '..', '..', 'uploads'), {
     prefix: '/uploads/',
   });
-
-  // --- KONFIGURASI CORS ---
-
-  // Untuk DEVELOPMENT: Izinkan semua origin agar mudah diakses dari localhost
-  // PENTING: Untuk PRODUCTION, ganti 'origin: true' dengan whitelist yang spesifik di bawah
-  app.enableCors({
-    origin: true, // Izinkan semua origin
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    credentials: true,
-  });
-
-  /*
+  
   // ================================================================
   // CONTOH KONFIGURASI CORS UNTUK PRODUCTION (Gunakan ini saat deploy)
   // ================================================================
@@ -52,7 +41,7 @@ async function bootstrap() {
       methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
       credentials: true,
   });
-  */
+  
 
   const config = new DocumentBuilder()
     .setTitle('GrowRoom API')
