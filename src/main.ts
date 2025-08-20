@@ -9,11 +9,11 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   app.useGlobalPipes(new ValidationPipe({
-    whitelist: true,      // Mengabaikan properti yang tidak ada di DTO
-    transform: true,      // Mengubah payload yang masuk menjadi instance DTO
-    forbidNonWhitelisted: true, // Melempar error jika ada properti yang tidak diizinkan
+    whitelist: true,
+    transform: true,
+    forbidNonWhitelisted: true,
     transformOptions: {
-      enableImplicitConversion: true, // Mengonversi tipe data secara implisit
+      enableImplicitConversion: true,
     },
   }));
   
@@ -21,23 +21,38 @@ async function bootstrap() {
     prefix: '/uploads/',
   });
 
+  // --- KONFIGURASI CORS ---
+
+  // Untuk DEVELOPMENT: Izinkan semua origin agar mudah diakses dari localhost
+  // PENTING: Untuk PRODUCTION, ganti 'origin: true' dengan whitelist yang spesifik di bawah
+  app.enableCors({
+    origin: true, // Izinkan semua origin
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    credentials: true,
+  });
+
+  /*
+  // ================================================================
+  // CONTOH KONFIGURASI CORS UNTUK PRODUCTION (Gunakan ini saat deploy)
+  // ================================================================
   const whitelist = [
     'https://growroom.id', 
     'https://admin.growroom.id',
     'https://backend.growroom.id'
   ];
 
- app.enableCors({
-    origin: function (origin, callback) {
-      if (!origin || whitelist.indexOf(origin) !== -1) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    credentials: true,
-});
+  app.enableCors({
+      origin: function (origin, callback) {
+        if (!origin || whitelist.indexOf(origin) !== -1) {
+          callback(null, true);
+        } else {
+          callback(new Error('Not allowed by CORS'));
+        }
+      },
+      methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+      credentials: true,
+  });
+  */
 
   const config = new DocumentBuilder()
     .setTitle('GrowRoom API')
