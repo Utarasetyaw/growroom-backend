@@ -4,6 +4,8 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+// Ditambahkan untuk proteksi Swagger
+import * as basicAuth from 'express-basic-auth';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -17,14 +19,13 @@ async function bootstrap() {
     },
   }));
   
+  // Kode ini tetap ada
   app.useStaticAssets(join(__dirname, '..', '..', 'uploads'), {
     prefix: '/uploads/',
   });
 
   // --- KONFIGURASI CORS ---
-
-  // Untuk DEVELOPMENT: Izinkan semua origin agar mudah diakses dari localhost
-  // PENTING: Untuk PRODUCTION, ganti 'origin: true' dengan whitelist yang spesifik di bawah
+  // Kode ini tetap ada
   app.enableCors({
     origin: true, // Izinkan semua origin
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
@@ -32,6 +33,7 @@ async function bootstrap() {
   });
 
   /*
+  // Kode komentar ini juga tetap ada untuk referensi Anda
   // ================================================================
   // CONTOH KONFIGURASI CORS UNTUK PRODUCTION (Gunakan ini saat deploy)
   // ================================================================
@@ -54,6 +56,20 @@ async function bootstrap() {
   });
   */
 
+  // --- PROTEKSI SWAGGER DENGAN PASSWORD ---
+  // Ini adalah kode baru yang ditambahkan
+  app.use(
+    ['/api', '/api-json'],
+    basicAuth({
+      challenge: true,
+      users: {
+        [(process.env.SWAGGER_USER || 'satulini.id')]: process.env.SWAGGER_PASSWORD || 'LiniGrowup@123',
+      },
+    }),
+  );
+
+  // --- SETUP SWAGGER ---
+  // Kode ini tetap ada
   const config = new DocumentBuilder()
     .setTitle('GrowRoom API')
     .setDescription('Dokumentasi API untuk GrowRoom')
