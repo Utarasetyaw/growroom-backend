@@ -26,13 +26,13 @@ async function bootstrap() {
 
   // --- KONFIGURASI CORS ---
   // Kode ini tetap ada
-  app.enableCors({
-    origin: true, // Izinkan semua origin
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    credentials: true,
-  });
+  // app.enableCors({
+  //   origin: true, // Izinkan semua origin
+  //   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+  //   credentials: true,
+  // });
 
-  /*
+  
   // Kode komentar ini juga tetap ada untuk referensi Anda
   // ================================================================
   // CONTOH KONFIGURASI CORS UNTUK PRODUCTION (Gunakan ini saat deploy)
@@ -54,7 +54,7 @@ async function bootstrap() {
       methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
       credentials: true,
   });
-  */
+  
 
   // --- PROTEKSI SWAGGER DENGAN PASSWORD ---
   // Ini adalah kode baru yang ditambahkan
