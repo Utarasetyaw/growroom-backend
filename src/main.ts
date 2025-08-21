@@ -20,7 +20,18 @@ async function bootstrap() {
   app.useStaticAssets(join(__dirname, '..', '..', 'uploads'), {
     prefix: '/uploads/',
   });
-  
+
+  // --- KONFIGURASI CORS ---
+
+  // Untuk DEVELOPMENT: Izinkan semua origin agar mudah diakses dari localhost
+  // PENTING: Untuk PRODUCTION, ganti 'origin: true' dengan whitelist yang spesifik di bawah
+  app.enableCors({
+    origin: true, // Izinkan semua origin
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    credentials: true,
+  });
+
+  /*
   // ================================================================
   // CONTOH KONFIGURASI CORS UNTUK PRODUCTION (Gunakan ini saat deploy)
   // ================================================================
@@ -41,10 +52,10 @@ async function bootstrap() {
       methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
       credentials: true,
   });
-  
+  */
 
   const config = new DocumentBuilder()
-    .setTitle('GrowRoom API')
+    .setTitle('Daunx.id API')
     .setDescription('Dokumentasi API untuk GrowRoom')
     .setVersion('1.0')
     .addBearerAuth()
@@ -53,6 +64,6 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api', app, document);
 
-  await app.listen(3006);
+  await app.listen(3007);
 }
 bootstrap();
