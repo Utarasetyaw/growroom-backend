@@ -20,7 +20,6 @@ import { MidtransService } from '../midtrans/midtrans.service';
 import { PaypalService } from '../paypal/paypal.service';
 import { PdfService } from '../pdf/pdf.service';
 
-// Tipe-tipe helper tetap sama
 type OrderWithDetails = Prisma.OrderGetPayload<{
   include: {
     user: true;
@@ -48,7 +47,6 @@ interface SaveOrderPayload {
   productMap: Map<number, any>;
   midtransOrderId?: string;
   paypalOrderId?: string;
-  // Tambahkan detail capture untuk disimpan
   paypalCaptureDetails?: any;
 }
 
@@ -60,17 +58,11 @@ export class OrdersService {
     private prisma: PrismaService,
     private cartService: CartService,
     private midtransService: MidtransService,
-    // Gunakan Inject dan forwardRef untuk mengatasi circular dependency
     @Inject(forwardRef(() => PaypalService))
     private paypalService: PaypalService,
     private pdfService: PdfService,
   ) {}
 
-  /**
-   * REVISI: Logika pembuatan order.
-   * - Midtrans & Manual: Langsung buat order di DB dengan status PENDING.
-   * - PayPal: HANYA buat order di server PayPal, kembalikan ID-nya. Order internal dibuat nanti setelah capture.
-   */
   async create(userId: number, dto: CreateOrderDto) {
     const { paymentMethodId } = dto;
 
@@ -86,12 +78,10 @@ export class OrdersService {
       throw new NotFoundException('Pengguna tidak ditemukan.');
     }
 
-    // Hitung total terlebih dahulu untuk semua metode
     const totals = await this._calculateTotals(dto);
 
     switch (paymentMethod.code) {
       case 'midtrans': {
-        // PERBAIKAN: Tambahkan blok try...catch untuk menangani error dari Midtrans
         try {
           const orderIdForMidtrans = `ORDER-${userId}-${Date.now()}`;
           const itemDetailsForMidtrans = dto.orderItems.map((item) => {
@@ -128,7 +118,6 @@ export class OrdersService {
             internalOrderId: order.id,
           };
         } catch (error) {
-          // Tangkap error (misal: kunci server salah) dan berikan pesan yang ramah pengguna
           this.logger.error(`[Midtrans Create] Gagal membuat transaksi: ${error.message}`, error.stack);
           throw new BadRequestException(
             'Metode pembayaran ini sedang dalam pemeliharaan. Silakan hubungi admin atau coba metode lain.',
@@ -137,7 +126,6 @@ export class OrdersService {
       }
 
       case 'paypal': {
-        // PERBAIKAN: Tambahkan blok try...catch untuk menangani error dari PayPal
         try {
           const refIdForPaypal = `PAYPAL-TEMP-${userId}-${Date.now()}`;
           const paypalOrderResponse = await this.paypalService.createPaypalOrder(
@@ -152,7 +140,6 @@ export class OrdersService {
             paypalOrderId: paypalOrderResponse.id,
           };
         } catch (error) {
-          // Tangkap error (misal: client ID/secret salah) dan berikan pesan yang ramah pengguna
           this.logger.error(`[PayPal Create] Gagal membuat order: ${error.message}`, error.stack);
           throw new BadRequestException(
             'Metode pembayaran ini sedang dalam pemeliharaan. Silakan hubungi admin atau coba metode lain.',
@@ -184,10 +171,6 @@ export class OrdersService {
     }
   }
   
-  /**
-   * FUNGSI BARU: Menyimpan order PayPal ke DB SETELAH pembayaran berhasil di-capture.
-   * Dipanggil oleh PaypalService.
-   */
   async finalizePaypalOrder(
     userId: number,
     dto: CreateOrderDto,
@@ -217,9 +200,6 @@ export class OrdersService {
     return orderDto;
   }
 
-  /**
-   * REVISI: Menerima flag 'isPaid' untuk menentukan status order saat dibuat.
-   */
   private async _saveOrderToDb(payload: SaveOrderPayload, isPaid: boolean = false): Promise<OrderWithDetails> {
     const { userId, address, shippingCost, subtotal, total, paymentMethodId, currencyCode, midtransOrderId, paypalOrderId, orderItems, productMap, paypalCaptureDetails } = payload;
     
@@ -402,12 +382,14 @@ export class OrdersService {
     if (!orderData) {
       throw new NotFoundException('Order tidak ditemukan atau akses ditolak.');
     }
+
+    // Tentukan bahasa berdasarkan currencyCode dari order
+    const lang = orderData.currencyCode === 'IDR' ? 'id' : 'en';
+
+    // Kirim informasi bahasa (lang) ke PdfService
     return this.pdfService.generateInvoicePdf(orderData);
   }
 
-  /**
-   * REVISI TOTAL: Mengizinkan retry payment untuk Midtrans dan metode Manual.
-   */
   async retryPayment(orderId: number, userId: number) {
     this.logger.log(`User #${userId} mencoba membayar ulang order #${orderId}`);
     
@@ -466,7 +448,6 @@ export class OrdersService {
         };
       }
 
-      // PERBAIKAN: Tambahkan case untuk pembayaran manual
       case 'bank_transfer':
       case 'wise': {
         const configObject = typeof order.paymentMethod.config === 'object' && order.paymentMethod.config !== null 
@@ -477,7 +458,6 @@ export class OrdersService {
             amount: order.total, 
             paymentDueDate: order.paymentDueDate 
         };
-        // Fetch products for each order item to satisfy the DTO requirements
         const orderWithProducts = {
             ...order,
             orderItems: await Promise.all(
@@ -501,7 +481,6 @@ export class OrdersService {
       }
 
       case 'paypal':
-        // PayPal tidak mendukung retry payment dalam alur ini karena order internal tidak dibuat.
         throw new BadRequestException('Pembayaran PayPal tidak dapat dicoba ulang. Silakan buat pesanan baru.');
 
       default:
@@ -542,7 +521,6 @@ export class OrdersService {
   }
 }
 
-// Fungsi mapper DTO tetap sama
 const mapOrderToDto = (order: OrderWithDetails | null): OrderResponseDto | null => {
   if (!order) return null;
   return {
@@ -565,10 +543,6 @@ const mapOrderToDto = (order: OrderWithDetails | null): OrderResponseDto | null 
       productName: (item.productName ?? {}) as any,
       productVariant: item.productVariant === null ? undefined : (item.productVariant as any),
       productImage: item.productImage ?? undefined,
-      // PERBAIKAN ERROR: Logika ini lebih aman untuk TypeScript
-      // Jika item.product ada (bukan null), maka kita petakan.
-      // Jika tidak, properti 'product' akan menjadi 'undefined',
-      // yang sesuai dengan 'product?: ProductInOrderDto' di DTO.
       product: item.product
         ? { id: item.product.id, name: (item.product.name ?? {}) as any }
         : undefined,
