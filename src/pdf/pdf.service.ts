@@ -1,3 +1,5 @@
+// src/pdf/pdf.service.ts
+
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrderResponseDto } from '../orders/dto/order-response.dto';
@@ -5,7 +7,54 @@ import * as PDFDocument from 'pdfkit';
 import * as fs from 'fs';
 import * as path from 'path';
 
-// Definisikan tipe data untuk laporan keuangan agar lebih jelas
+// --- 1. ADD TRANSLATIONS OBJECT ---
+const translations = {
+  en: {
+    INVOICE: 'INVOICE',
+    BILLED_TO: 'Billed To:',
+    INVOICE_NO: 'Invoice No:',
+    DATE_ISSUED: 'Date Issued:',
+    STATUS: 'Status:',
+    PRODUCT: 'Product',
+    QUANTITY: 'Quantity',
+    UNIT_PRICE: 'Unit Price',
+    TOTAL: 'Total',
+    SUBTOTAL: 'Subtotal',
+    SHIPPING_FEE: 'Shipping Fee',
+    GRAND_TOTAL: 'Grand Total',
+    THANK_YOU: 'Thank you for your purchase.',
+    FINANCE_REPORT: 'Financial Report',
+    PERIOD: 'Period:',
+    SUMMARY: 'Revenue Summary',
+    TOTAL_REVENUE: 'Total Revenue',
+    SUCCESSFUL_ORDERS: 'Successful Orders',
+    FAILED_ORDERS: 'Failed/Cancelled Orders',
+    TOTAL_ORDERS: 'Total All Orders',
+  },
+  id: {
+    INVOICE: 'INVOICE',
+    BILLED_TO: 'Ditagihkan Kepada:',
+    INVOICE_NO: 'Invoice No:',
+    DATE_ISSUED: 'Tanggal Terbit:',
+    STATUS: 'Status:',
+    PRODUCT: 'Produk',
+    QUANTITY: 'Kuantitas',
+    UNIT_PRICE: 'Harga Satuan',
+    TOTAL: 'Total',
+    SUBTOTAL: 'Subtotal',
+    SHIPPING_FEE: 'Biaya Kirim',
+    GRAND_TOTAL: 'Total Akhir',
+    THANK_YOU: 'Terima kasih telah berbelanja di toko kami.',
+    FINANCE_REPORT: 'Laporan Keuangan',
+    PERIOD: 'Periode:',
+    SUMMARY: 'Ringkasan Pendapatan',
+    TOTAL_REVENUE: 'Total Omzet',
+    SUCCESSFUL_ORDERS: 'Pesanan Berhasil',
+    FAILED_ORDERS: 'Pesanan Gagal/Batal',
+    TOTAL_ORDERS: 'Total Semua Pesanan',
+  },
+};
+
 interface FinanceReportData {
   omset: number;
   pesananBerhasil: number;
@@ -19,11 +68,10 @@ export class PdfService {
 
   constructor(private prisma: PrismaService) {}
 
-  /**
-   * Membuat PDF invoice dengan tampilan profesional.
-   */
-  async generateInvoicePdf(order: OrderResponseDto): Promise<Buffer> {
+  // --- 2. ACCEPT 'lang' PARAMETER ---
+  async generateInvoicePdf(order: OrderResponseDto, lang: 'en' | 'id'): Promise<Buffer> {
     const settings = await this.prisma.generalSetting.findUnique({ where: { id: 1 } });
+    const T = translations[lang]; // Select the correct language texts
 
     return new Promise(async (resolve) => {
       const doc = new PDFDocument({ size: 'A4', margin: 50 });
@@ -31,20 +79,19 @@ export class PdfService {
       doc.on('data', buffers.push.bind(buffers));
       doc.on('end', () => resolve(Buffer.concat(buffers)));
 
-      await this.generateHeader(doc, settings);
-      this.generateCustomerInformation(doc, order);
-      this.generateInvoiceTable(doc, order);
-      this.generateFooter(doc, settings);
+      await this.generateHeader(doc, settings, lang);
+      this.generateCustomerInformation(doc, order, T, lang);
+      this.generateInvoiceTable(doc, order, T, lang);
+      this.generateFooter(doc, settings, T);
 
       doc.end();
     });
   }
-
-  /**
-   * Membuat PDF laporan keuangan dengan tampilan profesional.
-   */
+  
+  // This function remains unchanged for now, but could be updated similarly if needed.
   async generateFinanceReportPdf(summary: FinanceReportData, startStr: string, endStr: string): Promise<Buffer> {
     const settings = await this.prisma.generalSetting.findUnique({ where: { id: 1 } });
+    const T = translations['id']; // Defaulting to Indonesian for reports
     
     return new Promise(async (resolve) => {
       const doc = new PDFDocument({ size: 'A4', margin: 50 });
@@ -52,140 +99,128 @@ export class PdfService {
       doc.on('data', buffers.push.bind(buffers));
       doc.on('end', () => resolve(Buffer.concat(buffers)));
 
-      await this.generateHeader(doc, settings);
-      this.generateReportTitle(doc, startStr, endStr);
-      this.generateReportBody(doc, summary);
-      this.generateFooter(doc, settings);
+      await this.generateHeader(doc, settings, 'id');
+      this.generateReportTitle(doc, startStr, endStr, T);
+      this.generateReportBody(doc, summary, T);
+      this.generateFooter(doc, settings, T);
 
       doc.end();
     });
   }
 
-  /**
-   * Membuat bagian header dokumen dengan logo dan detail perusahaan.
-   */
-  private async generateHeader(doc: PDFKit.PDFDocument, settings: any) {
-    const shopName = settings?.shopName?.id || settings?.shopName?.en || 'Nama Toko Anda';
+  private async generateHeader(doc: PDFKit.PDFDocument, settings: any, lang: 'en' | 'id') {
+    const shopName = settings?.shopName?.[lang] || settings?.shopName?.en || 'Your Shop Name';
 
-    // --- SISI KIRI: Informasi Perusahaan ---
     doc
-      .fontSize(20)
-      .font('Helvetica-Bold')
-      .text(shopName, 50, 45)
-      .fontSize(10)
-      .font('Helvetica')
-      .text(settings?.address || 'Alamat Perusahaan', 50, 70)
-      .text(`${settings?.email || 'email@perusahaan.com'} | ${settings?.phoneNumber || '08xx-xxxx-xxxx'}`, 50, 85)
+      .fontSize(20).font('Helvetica-Bold').text(shopName, 50, 45)
+      .fontSize(10).font('Helvetica').text(settings?.address || 'Company Address', 50, 70)
+      .text(`${settings?.email || 'email@company.com'} | ${settings?.phoneNumber || '08xx-xxxx-xxxx'}`, 50, 85)
       .moveDown();
 
-    // --- SISI KANAN: Logo Perusahaan ---
     if (settings?.logoUrl) {
       try {
         const logoPath = path.join(process.cwd(), settings.logoUrl);
-        const logoBuffer = fs.readFileSync(logoPath);
-        doc.image(logoBuffer, 495, 45, { width: 50 });
+        if (fs.existsSync(logoPath)) {
+            doc.image(logoPath, 495, 45, { width: 50 });
+        } else {
+            this.logger.warn(`Logo file not found at path: ${logoPath}`);
+        }
       } catch (error) {
-        this.logger.error(`Gagal membaca file logo dari path: ${settings.logoUrl}. Pastikan file ada dan path benar.`, error.message);
+        this.logger.error(`Failed to read logo file from path: ${settings.logoUrl}.`, error.message);
       }
     }
   }
 
-  /**
-   * Membuat bagian informasi pelanggan dan detail invoice.
-   */
-  private generateCustomerInformation(doc: PDFKit.PDFDocument, order: OrderResponseDto) {
-    doc.fillColor('#444444').fontSize(20).font('Helvetica-Bold').text('INVOICE', 50, 160);
+  private generateCustomerInformation(doc: PDFKit.PDFDocument, order: OrderResponseDto, T: any, lang: 'en' | 'id') {
+    doc.fillColor('#444444').fontSize(20).font('Helvetica-Bold').text(T.INVOICE, 50, 160);
     this.generateHr(doc, 185);
 
     const customerInfoTop = 200;
+    
+    // --- 3. PARSE AND FORMAT THE ADDRESS ---
+    const addressObject = this.parseAddress(order.address);
+    const addressLines = [
+        addressObject.street,
+        `${addressObject.city}, ${addressObject.province}`,
+        `${addressObject.country} ${addressObject.postalCode}`
+    ].filter(line => line && line.trim() !== ','); // Filter out empty lines
+
     doc
-      .fontSize(10)
-      .font('Helvetica-Bold')
-      .text('Ditagihkan Kepada:', 50, customerInfoTop)
-      .font('Helvetica')
-      .text(order.user?.name || 'N/A', 50, customerInfoTop + 15)
-      .text(order.address, 50, customerInfoTop + 30)
-      .text(order.user?.email || '', 50, customerInfoTop + 45)
+      .fontSize(10).font('Helvetica-Bold').text(T.BILLED_TO, 50, customerInfoTop)
+      .font('Helvetica').text(order.user?.name || 'N/A', 50, customerInfoTop + 15);
+    
+    let currentY = customerInfoTop + 15;
+    addressLines.forEach(line => {
+        currentY += 15;
+        doc.text(line, 50, currentY);
+    });
+    doc.text(order.user?.email || '', 50, currentY + 15);
 
-      .font('Helvetica-Bold')
-      .text('Invoice No:', 350, customerInfoTop)
-      .font('Helvetica')
-      .text(`${order.id}`, 450, customerInfoTop)
+    doc
+      .font('Helvetica-Bold').text(T.INVOICE_NO, 350, customerInfoTop)
+      .font('Helvetica').text(`${order.id}`, 450, customerInfoTop)
       
-      .font('Helvetica-Bold')
-      .text('Tanggal Terbit:', 350, customerInfoTop + 15)
-      .font('Helvetica')
-      .text(new Date(order.createdAt).toLocaleDateString('id-ID'), 450, customerInfoTop + 15)
+      .font('Helvetica-Bold').text(T.DATE_ISSUED, 350, customerInfoTop + 15)
+      .font('Helvetica').text(new Date(order.createdAt).toLocaleDateString(lang === 'id' ? 'id-ID' : 'en-US'), 450, customerInfoTop + 15)
 
-      .font('Helvetica-Bold')
-      .text('Status:', 350, customerInfoTop + 30)
-      .font('Helvetica')
-      .text(order.paymentStatus, 450, customerInfoTop + 30)
+      .font('Helvetica-Bold').text(T.STATUS, 350, customerInfoTop + 30)
+      .font('Helvetica').text(order.paymentStatus, 450, customerInfoTop + 30)
       .moveDown();
   }
 
-  /**
-   * Membuat tabel rincian item pada invoice.
-   */
-  private generateInvoiceTable(doc: PDFKit.PDFDocument, order: OrderResponseDto) {
+  private generateInvoiceTable(doc: PDFKit.PDFDocument, order: OrderResponseDto, T: any, lang: 'en' | 'id') {
     let i = 0;
     const invoiceTableTop = 330;
     const currency = order.currencyCode;
 
     doc.font('Helvetica-Bold');
-    this.generateTableRow(doc, invoiceTableTop, 'Produk', 'Kuantitas', 'Harga Satuan', 'Total');
+    this.generateTableRow(doc, invoiceTableTop, T.PRODUCT, T.QUANTITY, T.UNIT_PRICE, T.TOTAL);
     this.generateHr(doc, invoiceTableTop + 20);
     doc.font('Helvetica');
 
     for (const item of order.orderItems) {
       const position = invoiceTableTop + (i + 1) * 30;
-      const name = (item.productName as any)?.id || (item.productName as any)?.en || 'Produk Dihapus';
+      const name = item.productName?.[lang] || item.productName?.['en'] || 'Product Removed';
       
       this.generateTableRow(
         doc,
         position,
         name,
         item.qty.toString(),
-        this.formatCurrency(item.price, currency),
-        this.formatCurrency(item.subtotal, currency),
+        this.formatCurrency(item.price, currency, lang),
+        this.formatCurrency(item.subtotal, currency, lang),
       );
       this.generateHr(doc, position + 20);
       i++;
     }
 
-    const subtotalPosition = invoiceTableTop + i * 30 + 30;
-    this.generateTableRow(doc, subtotalPosition, '', '', 'Subtotal', this.formatCurrency(order.subtotal, currency));
+    const subtotalPosition = invoiceTableTop + (i + 1) * 30;
+    this.generateTableRow(doc, subtotalPosition, '', '', T.SUBTOTAL, this.formatCurrency(order.subtotal, currency, lang));
 
     const shippingPosition = subtotalPosition + 20;
-    this.generateTableRow(doc, shippingPosition, '', '', 'Biaya Kirim', this.formatCurrency(order.shippingCost, currency));
+    this.generateTableRow(doc, shippingPosition, '', '', T.SHIPPING_FEE, this.formatCurrency(order.shippingCost, currency, lang));
     
     const totalPosition = shippingPosition + 30;
     doc.font('Helvetica-Bold');
-    this.generateTableRow(doc, totalPosition, '', '', 'Total Akhir', this.formatCurrency(order.total, currency));
+    this.generateTableRow(doc, totalPosition, '', '', T.GRAND_TOTAL, this.formatCurrency(order.total, currency, lang));
     doc.font('Helvetica');
   }
 
-  /**
-   * Membuat judul untuk laporan keuangan.
-   */
-  private generateReportTitle(doc: PDFKit.PDFDocument, startStr: string, endStr: string) {
-    doc.fillColor('#444444').fontSize(20).font('Helvetica-Bold').text('Laporan Keuangan', 50, 160);
-    doc.fontSize(12).font('Helvetica').text(`Periode: ${startStr} - ${endStr}`);
+  private generateReportTitle(doc: PDFKit.PDFDocument, startStr: string, endStr: string, T: any) {
+    doc.fillColor('#444444').fontSize(20).font('Helvetica-Bold').text(T.FINANCE_REPORT, 50, 160);
+    doc.fontSize(12).font('Helvetica').text(`${T.PERIOD} ${startStr} - ${endStr}`);
     this.generateHr(doc, 205);
   }
 
-  /**
-   * Membuat isi laporan keuangan.
-   */
-  private generateReportBody(doc: PDFKit.PDFDocument, summary: FinanceReportData) {
+  private generateReportBody(doc: PDFKit.PDFDocument, summary: FinanceReportData, T: any) {
     const reportBodyTop = 230;
-    doc.font('Helvetica-Bold').fontSize(14).text('Ringkasan Pendapatan', 50, reportBodyTop);
+    doc.font('Helvetica-Bold').fontSize(14).text(T.SUMMARY, 50, reportBodyTop);
 
     const data = [
-      { label: 'Total Omzet', value: this.formatCurrency(summary.omset, 'IDR') },
-      { label: 'Pesanan Berhasil', value: summary.pesananBerhasil.toString() },
-      { label: 'Pesanan Gagal/Batal', value: summary.pesananGagal.toString() },
-      { label: 'Total Semua Pesanan', value: summary.pesananSemua.toString() },
+      { label: T.TOTAL_REVENUE, value: this.formatCurrency(summary.omset, 'IDR', 'id') },
+      { label: T.SUCCESSFUL_ORDERS, value: summary.pesananBerhasil.toString() },
+      { label: T.FAILED_ORDERS, value: summary.pesananGagal.toString() },
+      { label: T.TOTAL_ORDERS, value: summary.pesananSemua.toString() },
     ];
 
     data.forEach((item, index) => {
@@ -195,23 +230,12 @@ export class PdfService {
     });
   }
 
-  /**
-   * Membuat footer di bagian bawah halaman.
-   */
-  private generateFooter(doc: PDFKit.PDFDocument, settings: any) {
+  private generateFooter(doc: PDFKit.PDFDocument, settings: any, T: any) {
     this.generateHr(doc, 750, 50, 512);
-    const shopName = settings?.shopName?.id || settings?.shopName?.en || 'toko kami';
-    doc
-      .fontSize(10)
-      .text(
-        `Terima kasih telah berbelanja di ${shopName}.`,
-        50,
-        760,
-        { align: 'center', width: 500 },
-      );
+    doc.fontSize(10).text(T.THANK_YOU, 50, 760, { align: 'center', width: 500 });
   }
 
-  // --- Helper Utilitas ---
+  // --- Helper Utilities ---
 
   private generateTableRow(doc: PDFKit.PDFDocument, y: number, item: string, qty: string, unitCost: string, lineTotal: string) {
     doc
@@ -226,7 +250,25 @@ export class PdfService {
     doc.strokeColor('#aaaaaa').lineWidth(1).moveTo(x1, y).lineTo(x2, y).stroke();
   }
 
-  private formatCurrency(value: number, currency: string) {
-    return value.toLocaleString('id-ID', { style: 'currency', currency: currency });
+  private formatCurrency(value: number, currency: string, lang: 'en' | 'id') {
+    const locale = lang === 'id' ? 'id-ID' : 'en-US';
+    return value.toLocaleString(locale, { style: 'currency', currency: currency });
+  }
+
+  private parseAddress(addressString: string): { [key: string]: string } {
+    try {
+        // Coba parsing sebagai JSON
+        const parsed = JSON.parse(addressString);
+        return {
+            street: parsed.street || '',
+            city: parsed.city || '',
+            province: parsed.province || '',
+            country: parsed.country || '',
+            postalCode: parsed.postalCode || '',
+        };
+    } catch (e) {
+        // Jika gagal, kembalikan sebagai satu baris street
+        return { street: addressString, city: '', province: '', country: '', postalCode: '' };
+    }
   }
 }

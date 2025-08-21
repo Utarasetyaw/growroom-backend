@@ -387,7 +387,7 @@ export class OrdersService {
     const lang = orderData.currencyCode === 'IDR' ? 'id' : 'en';
 
     // Kirim informasi bahasa (lang) ke PdfService
-    return this.pdfService.generateInvoicePdf(orderData);
+    return this.pdfService.generateInvoicePdf(orderData, lang);
   }
 
   async retryPayment(orderId: number, userId: number) {
