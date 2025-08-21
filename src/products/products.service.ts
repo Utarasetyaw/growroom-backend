@@ -194,7 +194,6 @@ export class ProductsService {
       where.name = {
         path: ['id'],
         string_contains: search,
-        mode: 'insensitive',
       };
     }
 
