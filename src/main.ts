@@ -55,7 +55,7 @@ async function bootstrap() {
   */
 
   const config = new DocumentBuilder()
-    .setTitle('Daunx.id API')
+    .setTitle('GrowRoom API')
     .setDescription('Dokumentasi API untuk GrowRoom')
     .setVersion('1.0')
     .addBearerAuth()
