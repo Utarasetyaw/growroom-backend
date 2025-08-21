@@ -1,3 +1,4 @@
+// src/generalsetting/generalsetting.controller.ts
 import {
   Controller, Get, Patch, Body, UseGuards,
   UseInterceptors, UploadedFiles, BadRequestException,
@@ -10,21 +11,62 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '@prisma/client';
 import { GeneralsettingService } from './generalsetting.service';
+// Pastikan 'extname' diimpor dari 'path'
 import { extname } from 'path';
 import { UpdateGeneralsettingDto } from './dto/update-generalsetting.dto';
 import { GeneralSettingResponseDto } from './dto/general-setting-response.dto';
 import { UpdateShippingModeDto } from './dto/update-shipping-mode.dto';
-// 1. Impor decorator @Public
 import { Public } from '../auth/decorators/public.decorator';
 
+// Definisikan batas ukuran file dalam bytes
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
+const MAX_VIDEO_SIZE_BYTES = 30 * 1024 * 1024; // 30 MB
+
+// Buat fungsi fileFilter untuk validasi ukuran dan format
+const fileFilter = (req, file, callback) => {
+  const fieldname = file.fieldname;
+  const fileSize = file.size;
+  // Ambil ekstensi file dan ubah ke huruf kecil untuk konsistensi
+  const fileExtension = extname(file.originalname).toLowerCase();
+
+  // --- REVISI: Tambahkan validasi format .ico untuk favicon ---
+  if (fieldname === 'faviconUrl' && fileExtension !== '.ico') {
+    return callback(
+      new BadRequestException('Format favicon harus .ico.'),
+      false,
+    );
+  }
+
+  // Cek ukuran untuk file gambar (logo, favicon, banner)
+  if (['logoUrl', 'faviconUrl', 'bannerImageUrl'].includes(fieldname)) {
+    if (fileSize > MAX_IMAGE_SIZE_BYTES) {
+      return callback(
+        new BadRequestException('Foto Anda lebih dari 5MB.'),
+        false,
+      );
+    }
+  }
+  // Cek ukuran untuk file video (banner video)
+  else if (fieldname === 'bannerVideoUrl') {
+    if (fileSize > MAX_VIDEO_SIZE_BYTES) {
+      return callback(
+        new BadRequestException('Video Anda lebih dari 30MB.'),
+        false,
+      );
+    }
+  }
+
+  // Terima file jika lolos semua validasi
+  callback(null, true);
+};
+
+
 @ApiTags('General Settings')
-// 2. Ubah path controller agar konsisten dengan panggilan frontend
 @Controller('generalsettings')
 export class GeneralsettingController {
   constructor(private readonly service: GeneralsettingService) {}
   
  
-  // Endpoint di bawah ini tidak perlu diubah, hanya guard-nya saja
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.OWNER)
@@ -59,6 +101,10 @@ export class GeneralsettingController {
         cb(null, `${randomName}${extname(file.originalname)}`);
       }
     }),
+    fileFilter: fileFilter,
+    limits: {
+      fileSize: MAX_VIDEO_SIZE_BYTES,
+    }
   }))
   async patchGeneral(
     @UploadedFiles() files: { [fieldname: string]: Express.Multer.File[] },
