@@ -7,7 +7,7 @@ import * as PDFDocument from 'pdfkit';
 import * as fs from 'fs';
 import * as path from 'path';
 
-// --- 1. ADD TRANSLATIONS OBJECT ---
+// --- 1. OBJEK UNTUK SEMUA TEKS TERJEMAHAN ---
 const translations = {
   en: {
     INVOICE: 'INVOICE',
@@ -68,10 +68,10 @@ export class PdfService {
 
   constructor(private prisma: PrismaService) {}
 
-  // --- 2. ACCEPT 'lang' PARAMETER ---
+  // --- 2. FUNGSI UTAMA KINI MENERIMA PARAMETER 'lang' ---
   async generateInvoicePdf(order: OrderResponseDto, lang: 'en' | 'id'): Promise<Buffer> {
     const settings = await this.prisma.generalSetting.findUnique({ where: { id: 1 } });
-    const T = translations[lang]; // Select the correct language texts
+    const T = translations[lang]; // Memilih objek terjemahan yang benar
 
     return new Promise(async (resolve) => {
       const doc = new PDFDocument({ size: 'A4', margin: 50 });
@@ -87,12 +87,11 @@ export class PdfService {
       doc.end();
     });
   }
-  
-  // This function remains unchanged for now, but could be updated similarly if needed.
+
   async generateFinanceReportPdf(summary: FinanceReportData, startStr: string, endStr: string): Promise<Buffer> {
     const settings = await this.prisma.generalSetting.findUnique({ where: { id: 1 } });
-    const T = translations['id']; // Defaulting to Indonesian for reports
-    
+    const T = translations['id']; // Laporan keuangan default ke Bahasa Indonesia
+
     return new Promise(async (resolve) => {
       const doc = new PDFDocument({ size: 'A4', margin: 50 });
       const buffers: Buffer[] = [];
@@ -126,7 +125,7 @@ export class PdfService {
             this.logger.warn(`Logo file not found at path: ${logoPath}`);
         }
       } catch (error) {
-        this.logger.error(`Failed to read logo file from path: ${settings.logoUrl}.`, error.message);
+        this.logger.error(`Failed to read logo file: ${settings.logoUrl}.`, error.message);
       }
     }
   }
@@ -137,24 +136,23 @@ export class PdfService {
 
     const customerInfoTop = 200;
     
-    // --- 3. PARSE AND FORMAT THE ADDRESS ---
+    // --- 3. MEM-PARSING DAN MEM-FORMAT ALAMAT DENGAN BENAR ---
     const addressObject = this.parseAddress(order.address);
     const addressLines = [
+        addressObject.name,
+        addressObject.phone,
         addressObject.street,
-        `${addressObject.city}, ${addressObject.province}`,
-        `${addressObject.country} ${addressObject.postalCode}`
-    ].filter(line => line && line.trim() !== ','); // Filter out empty lines
+        `${addressObject.city}, ${addressObject.province} ${addressObject.postalCode}`,
+        addressObject.country
+    ].filter(Boolean); // Menghapus baris yang kosong
 
-    doc
-      .fontSize(10).font('Helvetica-Bold').text(T.BILLED_TO, 50, customerInfoTop)
-      .font('Helvetica').text(order.user?.name || 'N/A', 50, customerInfoTop + 15);
+    doc.fontSize(10).font('Helvetica-Bold').text(T.BILLED_TO, 50, customerInfoTop);
     
-    let currentY = customerInfoTop + 15;
+    let currentY = customerInfoTop;
     addressLines.forEach(line => {
         currentY += 15;
-        doc.text(line, 50, currentY);
+        doc.font('Helvetica').text(line, 50, currentY);
     });
-    doc.text(order.user?.email || '', 50, currentY + 15);
 
     doc
       .font('Helvetica-Bold').text(T.INVOICE_NO, 350, customerInfoTop)
@@ -169,7 +167,6 @@ export class PdfService {
   }
 
   private generateInvoiceTable(doc: PDFKit.PDFDocument, order: OrderResponseDto, T: any, lang: 'en' | 'id') {
-    let i = 0;
     const invoiceTableTop = 330;
     const currency = order.currencyCode;
 
@@ -178,6 +175,7 @@ export class PdfService {
     this.generateHr(doc, invoiceTableTop + 20);
     doc.font('Helvetica');
 
+    let i = 0;
     for (const item of order.orderItems) {
       const position = invoiceTableTop + (i + 1) * 30;
       const name = item.productName?.[lang] || item.productName?.['en'] || 'Product Removed';
@@ -257,18 +255,19 @@ export class PdfService {
 
   private parseAddress(addressString: string): { [key: string]: string } {
     try {
-        // Coba parsing sebagai JSON
-        const parsed = JSON.parse(addressString);
-        return {
-            street: parsed.street || '',
-            city: parsed.city || '',
-            province: parsed.province || '',
-            country: parsed.country || '',
-            postalCode: parsed.postalCode || '',
-        };
+      const parsed = JSON.parse(addressString);
+      return {
+        name: parsed.name || '',
+        phone: parsed.phone || '',
+        street: parsed.street || '',
+        district: parsed.district || '',
+        city: parsed.city || '',
+        province: parsed.province || '',
+        country: parsed.country || '',
+        postalCode: parsed.postalCode || '',
+      };
     } catch (e) {
-        // Jika gagal, kembalikan sebagai satu baris street
-        return { street: addressString, city: '', province: '', country: '', postalCode: '' };
+      return { name: addressString, phone: '', street: '', district: '', city: '', province: '', country: '', postalCode: '' };
     }
   }
 }
