@@ -131,7 +131,7 @@ export class MidtransService {
     }
 
     // Langkah 3: Pastikan order belum dalam status final
-    const finalStatuses: PaymentStatus[] = [PaymentStatus.PAID, PaymentStatus.CANCELLED, PaymentStatus.REFUND];
+    const finalStatuses: PaymentStatus[] = [PaymentStatus.PAID, PaymentStatus.CANCELLED, PaymentStatus.REFUNDED];
     if (finalStatuses.includes(order.paymentStatus)) {
       this.logger.log(`[Midtrans Webhook] Order ${order.id} is already in a final state (${order.paymentStatus}). No action taken.`);
       return { message: 'Notification for an already finalized order received, no action taken.' };

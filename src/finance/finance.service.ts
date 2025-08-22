@@ -28,7 +28,7 @@ export class FinanceService {
       this.prisma.order.aggregate({
         _count: true,
         where: {
-          paymentStatus: { in: ['CANCELLED', 'REFUND'] },
+          paymentStatus: { in: ['CANCELLED', 'REFUNDED'] },
           createdAt: { gte: start, lte: end },
         },
       }),
