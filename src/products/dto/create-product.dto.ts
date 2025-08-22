@@ -1,14 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { 
-    IsString, 
-    IsInt, 
-    IsBoolean, 
-    IsOptional, 
-    Min, 
-    IsNumber, 
-    ValidateNested, 
-    IsArray 
+import {
+    IsString,
+    IsInt,
+    IsBoolean,
+    IsOptional,
+    Min,
+    IsNumber,
+    ValidateNested,
+    IsArray
 } from 'class-validator';
 
 // DTO untuk objek multibahasa
