@@ -10,7 +10,7 @@ import {
   UseGuards,
   UseInterceptors,
   UploadedFiles,
-  BadRequestException,
+  BadRequestException, // Tetap di-import jika ada logika lain yang mungkin memerlukannya
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import {
@@ -75,23 +75,11 @@ export class ProductsController {
   }))
   create(
     @UploadedFiles() files: Array<Express.Multer.File>,
-    @Body() rawDto: CreateProductDto,
+    @Body() createProductDto: CreateProductDto, // Langsung gunakan DTO yang sudah divalidasi
   ) {
-    const jsonFields = ['name', 'variant', 'description', 'prices', 'careDetails'];
-    const processedDto: any = { ...rawDto };
-
-    jsonFields.forEach(field => {
-      if (processedDto[field] && typeof processedDto[field] === 'string') {
-        try {
-          processedDto[field] = JSON.parse(processedDto[field]);
-        } catch (e) {
-          throw new BadRequestException(`Format JSON tidak valid pada field: ${field}`);
-        }
-      }
-    });
-    
+    // TIDAK PERLU PARSING JSON LAGI
     const imageUrls = files ? files.map(file => `/uploads/products/${file.filename}`) : [];
-    return this.productsService.create(processedDto, imageUrls);
+    return this.productsService.create(createProductDto, imageUrls);
   }
 
   @Patch(':id')
@@ -112,24 +100,12 @@ export class ProductsController {
   }))
   update(
     @Param('id', ParseIntPipe) id: number,
-    @Body() rawDto: UpdateProductDto,
+    @Body() updateProductDto: UpdateProductDto, // Langsung gunakan DTO yang sudah divalidasi
     @UploadedFiles() files?: Array<Express.Multer.File>,
   ) {
-    const jsonFields = ['name', 'variant', 'description', 'prices', 'careDetails'];
-    const processedDto: any = { ...rawDto };
-
-    jsonFields.forEach(field => {
-      if (processedDto[field] && typeof processedDto[field] === 'string') {
-        try {
-          processedDto[field] = JSON.parse(processedDto[field]);
-        } catch (e) {
-          throw new BadRequestException(`Format JSON tidak valid pada field: ${field}`);
-        }
-      }
-    });
-
+    // TIDAK PERLU PARSING JSON LAGI
     const newImageUrls = files ? files.map(file => `/uploads/products/${file.filename}`) : [];
-    return this.productsService.update(id, processedDto, newImageUrls);
+    return this.productsService.update(id, updateProductDto, newImageUrls);
   }
 
   @Delete(':id')

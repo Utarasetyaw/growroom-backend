@@ -19,7 +19,6 @@ export class ProductsService {
     subCategory: true,
   };
 
-  // ... (Metode findAll, findOne, create, update, remove, findBestProducts tetap sama) ...
   async findAll() {
     return this.prisma.product.findMany({
       include: this.productInclude,
@@ -42,27 +41,30 @@ export class ProductsService {
 
   async create(createProductDto: any, imageUrls: string[]) {
     const { prices, ...productData } = createProductDto;
-    const dataToCreate: Prisma.ProductCreateInput = {
-      ...productData,
-      images: {
-        create: imageUrls.map((url) => ({ url })),
-      },
-    };
+    
+    return this.prisma.$transaction(async (tx) => {
+      const dataToCreate: Prisma.ProductCreateInput = {
+        ...productData,
+        images: {
+          create: imageUrls.map((url) => ({ url })),
+        },
+      };
 
-    if (prices && prices.length > 0) {
-      const validPrices = prices.filter(
-        (p) => p.currencyId != null && p.price != null,
-      );
-      if (validPrices.length > 0) {
-        dataToCreate.prices = {
-          create: validPrices,
-        };
+      if (prices && prices.length > 0) {
+        const validPrices = prices.filter(
+          (p: any) => p.currencyId != null && p.price != null,
+        );
+        if (validPrices.length > 0) {
+          dataToCreate.prices = {
+            create: validPrices,
+          };
+        }
       }
-    }
 
-    return this.prisma.product.create({
-      data: dataToCreate,
-      include: this.productInclude,
+      return tx.product.create({
+        data: dataToCreate,
+        include: this.productInclude,
+      });
     });
   }
 
@@ -82,22 +84,32 @@ export class ProductsService {
         });
       }
 
+      // --- REVISI UTAMA (UPDATE): Logika Hapus Gambar Cerdas ---
       if (imagesToDelete && imagesToDelete.length > 0) {
         const imagesToDeleteRecords = await tx.productImage.findMany({
           where: { id: { in: imagesToDelete } },
         });
 
         for (const image of imagesToDeleteRecords) {
-          const imagePath = join(process.cwd(), image.url.substring(1));
-          if (fs.existsSync(imagePath)) {
-            try {
-              fs.unlinkSync(imagePath);
-            } catch (err) {
-              console.error(`Failed to delete file: ${imagePath}`, err);
+          // Periksa apakah URL gambar ini digunakan di orderItem manapun
+          const orderItemCount = await tx.orderItem.count({
+            where: { productImage: image.url },
+          });
+
+          // Hapus file fisik HANYA JIKA tidak ada order yang menggunakannya
+          if (orderItemCount === 0) {
+            const imagePath = join(process.cwd(), image.url.substring(1));
+            if (fs.existsSync(imagePath)) {
+              try {
+                fs.unlinkSync(imagePath);
+              } catch (err) {
+                console.error(`Failed to delete file: ${imagePath}`, err);
+              }
             }
           }
         }
 
+        // Tetap hapus relasi gambar dari produknya, terlepas dari apakah filenya dihapus atau tidak
         await tx.productImage.deleteMany({
           where: { productId: id, id: { in: imagesToDelete } },
         });
@@ -135,29 +147,41 @@ export class ProductsService {
   }
 
   async remove(id: number) {
-    const product = await this.prisma.product.findUnique({
-      where: { id },
-      include: { images: true },
-    });
+    return this.prisma.$transaction(async (tx) => {
+      const product = await tx.product.findUnique({
+        where: { id },
+        include: { images: true },
+      });
 
-    if (!product) {
-      throw new NotFoundException(`Product with ID ${id} not found.`);
-    }
+      if (!product) {
+        throw new NotFoundException(`Product with ID ${id} not found.`);
+      }
 
-    if (product.images && product.images.length > 0) {
-      for (const image of product.images) {
-        const imagePath = join(process.cwd(), image.url.substring(1));
-        if (fs.existsSync(imagePath)) {
-          try {
-            fs.unlinkSync(imagePath);
-          } catch (err) {
-            console.error(`Failed to delete product file: ${imagePath}`, err);
+      // --- REVISI UTAMA (REMOVE): Logika Hapus Gambar Cerdas ---
+      if (product.images && product.images.length > 0) {
+        for (const image of product.images) {
+          // Periksa apakah URL gambar ini digunakan di orderItem manapun
+          const orderItemCount = await tx.orderItem.count({
+            where: { productImage: image.url },
+          });
+
+          // Hapus file fisik HANYA JIKA tidak ada order yang menggunakannya
+          if (orderItemCount === 0) {
+            const imagePath = join(process.cwd(), image.url.substring(1));
+            if (fs.existsSync(imagePath)) {
+              try {
+                fs.unlinkSync(imagePath);
+              } catch (err) {
+                console.error(`Failed to delete product file: ${imagePath}`, err);
+              }
+            }
           }
         }
       }
-    }
 
-    return this.prisma.product.delete({ where: { id } });
+      // Setelah file aman, hapus record produk dari database.
+      return tx.product.delete({ where: { id } });
+    });
   }
 
   async findBestProducts(limit: number = 8) {
@@ -182,7 +206,7 @@ export class ProductsService {
       availability,
       minPrice,
       maxPrice,
-      currencyCode, // <-- Ambil currencyCode dari query
+      currencyCode,
     } = query;
     const skip = (page - 1) * limit;
 
@@ -220,7 +244,6 @@ export class ProductsService {
       }
     }
 
-    // --- PERBAIKAN LOGIKA FILTER HARGA ---
     if (minPrice !== undefined || maxPrice !== undefined) {
       where.prices = {
         some: {
@@ -228,7 +251,6 @@ export class ProductsService {
             gte: minPrice,
             lte: maxPrice,
           },
-          // Tambahkan filter berdasarkan currencyCode jika ada
           ...(currencyCode && {
             currency: {
               code: currencyCode,

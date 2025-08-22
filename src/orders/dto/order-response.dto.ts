@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { OrderStatus, PaymentStatus } from '@prisma/client';
 
-// REVISI: DTO khusus untuk menangani nama dalam berbagai bahasa
+// DTO khusus untuk menangani nama dalam berbagai bahasa
 class MultiLanguageNameDto {
   @ApiPropertyOptional({ type: String, example: 'Product Name in English' })
   en?: string;
@@ -29,7 +29,7 @@ class ProductInOrderDto {
     description: 'Nama produk dalam format multilingual.',
     type: MultiLanguageNameDto,
   })
-  name: MultiLanguageNameDto; // REVISI: Menggunakan tipe yang jelas, bukan 'any'
+  name: MultiLanguageNameDto;
 }
 
 class PaymentMethodInOrderDto {
@@ -42,7 +42,7 @@ class PaymentMethodInOrderDto {
   @ApiProperty({ example: 'bank_transfer' })
   code: string;
 
-  // REVISI: Properti 'config' yang sensitif DIHAPUS dari DTO.
+  // Properti 'config' yang sensitif DIHAPUS dari DTO.
   // Data ini tidak seharusnya pernah dikirim ke client.
 }
 
@@ -70,17 +70,17 @@ class OrderItemInOrderDto {
     description: 'Snapshot nama produk saat order dibuat.',
     type: MultiLanguageNameDto,
   })
-  productName: MultiLanguageNameDto; // REVISI: Menggunakan tipe yang jelas
+  productName: MultiLanguageNameDto;
 
   @ApiPropertyOptional({ 
     description: 'Snapshot varian produk saat order dibuat.',
     type: MultiLanguageNameDto,
   })
-  productVariant?: MultiLanguageNameDto; // REVISI: Menggunakan tipe yang jelas
+  productVariant?: MultiLanguageNameDto;
 
   @ApiPropertyOptional({
     description: 'Snapshot URL gambar produk saat order dibuat.',
-    example: 'https://example.com/product.jpg',
+    example: '/uploads/products/image.jpg',
   })
   productImage?: string;
 }
@@ -117,6 +117,11 @@ export class OrderResponseDto {
   @ApiProperty()
   updatedAt: Date;
 
+  @ApiPropertyOptional({
+    description: 'Batas waktu pembayaran untuk order ini.',
+  })
+  paymentDueDate?: Date;
+
   @ApiProperty({ type: UserInOrderDto })
   user: UserInOrderDto;
 
@@ -125,9 +130,4 @@ export class OrderResponseDto {
 
   @ApiProperty({ type: [OrderItemInOrderDto] })
   orderItems: OrderItemInOrderDto[];
-
-  @ApiPropertyOptional({
-    description: 'Batas waktu pembayaran untuk order ini.',
-  })
-  paymentDueDate?: Date;
 }

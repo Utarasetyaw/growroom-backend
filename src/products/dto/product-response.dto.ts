@@ -2,6 +2,15 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 // --- DTO Pendukung untuk Respons ---
 
+// DTO BARU: DTO yang bisa digunakan kembali untuk semua field multibahasa
+class MultiLanguageObjectDto {
+  @ApiPropertyOptional({ description: 'Teks dalam Bahasa Indonesia.' })
+  id?: string;
+
+  @ApiPropertyOptional({ description: 'Teks dalam Bahasa Inggris.' })
+  en?: string;
+}
+
 class ImageDto {
   @ApiProperty({ description: 'ID unik dari gambar.' })
   id: number;
@@ -36,16 +45,19 @@ class SubCategoryDto {
   @ApiProperty({ description: 'ID unik dari sub-kategori.' })
   id: number;
   
-  @ApiProperty({ type: 'object', additionalProperties: { type: 'string' }, example: { id: 'Daun Lebar', en: 'Wide Leaf' }, description: 'Nama sub-kategori dalam berbagai bahasa.' })
-  name: Record<string, string>;
+  // REVISI: Menggunakan DTO yang bisa digunakan kembali
+  @ApiProperty({ type: MultiLanguageObjectDto, description: 'Nama sub-kategori dalam berbagai bahasa.' })
+  name: MultiLanguageObjectDto;
 }
 
 class CareDetailResponseDto {
-  @ApiProperty({ type: 'object', additionalProperties: { type: 'string' }, example: { id: 'Ukuran Pot', en: 'Pot Size' }, description: 'Nama detail perawatan (multibahasa).' })
-  name: Record<string, string>;
+  // REVISI: Menggunakan DTO yang bisa digunakan kembali
+  @ApiProperty({ type: MultiLanguageObjectDto, description: 'Nama detail perawatan (multibahasa).' })
+  name: MultiLanguageObjectDto;
 
-  @ApiProperty({ type: 'object', additionalProperties: { type: 'string' }, example: { id: '15 cm', en: '15 cm' }, description: 'Nilai detail perawatan (multibahasa).' })
-  value: Record<string, string>;
+  // REVISI: Menggunakan DTO yang bisa digunakan kembali
+  @ApiProperty({ type: MultiLanguageObjectDto, description: 'Nilai detail perawatan (multibahasa).' })
+  value: MultiLanguageObjectDto;
 }
 
 
@@ -55,14 +67,17 @@ export class ProductResponseDto {
   @ApiProperty({ description: 'ID unik produk.' })
   id: number;
 
-  @ApiProperty({ type: 'object', additionalProperties: { type: 'string' }, description: 'Nama produk dalam berbagai bahasa.' })
-  name: Record<string, string>;
+  // REVISI: Menggunakan DTO yang bisa digunakan kembali
+  @ApiProperty({ type: MultiLanguageObjectDto, description: 'Nama produk dalam berbagai bahasa.' })
+  name: MultiLanguageObjectDto;
 
-  @ApiProperty({ type: 'object', additionalProperties: { type: 'string' }, description: 'Varian produk dalam berbagai bahasa.' })
-  variant: Record<string, string>;
+  // REVISI: Menggunakan DTO yang bisa digunakan kembali
+  @ApiProperty({ type: MultiLanguageObjectDto, description: 'Varian produk dalam berbagai bahasa.' })
+  variant: MultiLanguageObjectDto;
   
-  @ApiPropertyOptional({ type: 'object', additionalProperties: { type: 'string' }, description: "Deskripsi produk dalam berbagai bahasa." })
-  description: Record<string, string> | null;
+  // REVISI: Menggunakan DTO yang bisa digunakan kembali
+  @ApiPropertyOptional({ type: MultiLanguageObjectDto, description: "Deskripsi produk dalam berbagai bahasa." })
+  description: MultiLanguageObjectDto | null;
 
   @ApiProperty({ description: 'Jumlah stok produk saat ini.' })
   stock: number;

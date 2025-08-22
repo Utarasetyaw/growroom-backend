@@ -20,31 +20,32 @@ import { MidtransService } from '../midtrans/midtrans.service';
 import { PaypalService } from '../paypal/paypal.service';
 import { PdfService } from '../pdf/pdf.service';
 
+// Tipe helper untuk data order yang menyertakan relasi
 type OrderWithDetails = Prisma.OrderGetPayload<{
   include: {
     user: true;
-    orderItems: { include: { product: true } };
+    orderItems: { 
+      include: { 
+        product: {
+          include: { images: { take: 1, orderBy: { id: 'asc' } } }
+        } 
+      } 
+    };
     paymentMethod: true;
   };
 }>;
 
+// Tipe helper untuk hasil kalkulasi
 interface CalculatedTotals {
   subtotal: number;
   shippingCost: number;
   total: number;
-  productMap: Map<number, Product & { prices: any[]; images: any[] }>;
+  productMap: Map<number, Prisma.ProductGetPayload<{ include: { prices: true; images: true } }>>;
 }
 
-interface SaveOrderPayload {
+// Tipe helper untuk payload penyimpanan order
+interface SaveOrderPayload extends CreateOrderDto, CalculatedTotals {
   userId: number;
-  address: string;
-  shippingCost: number;
-  subtotal: number;
-  total: number;
-  paymentMethodId: number;
-  currencyCode: string;
-  orderItems: any[];
-  productMap: Map<number, any>;
   midtransOrderId?: string;
   paypalOrderId?: string;
   paypalCaptureDetails?: any;
@@ -80,6 +81,7 @@ export class OrdersService {
 
     const totals = await this._calculateTotals(dto);
 
+    // Logika untuk setiap metode pembayaran
     switch (paymentMethod.code) {
       case 'midtrans': {
         try {
@@ -119,12 +121,9 @@ export class OrdersService {
           };
         } catch (error) {
           this.logger.error(`[Midtrans Create] Gagal membuat transaksi: ${error.message}`, error.stack);
-          throw new BadRequestException(
-            'Metode pembayaran ini sedang dalam pemeliharaan. Silakan hubungi admin atau coba metode lain.',
-          );
+          throw new BadRequestException('Gagal memproses pembayaran Midtrans.');
         }
       }
-
       case 'paypal': {
         try {
           const refIdForPaypal = `PAYPAL-TEMP-${userId}-${Date.now()}`;
@@ -141,18 +140,15 @@ export class OrdersService {
           };
         } catch (error) {
           this.logger.error(`[PayPal Create] Gagal membuat order: ${error.message}`, error.stack);
-          throw new BadRequestException(
-            'Metode pembayaran ini sedang dalam pemeliharaan. Silakan hubungi admin atau coba metode lain.',
-          );
+          throw new BadRequestException('Gagal memproses pembayaran PayPal.');
         }
       }
-
       case 'bank_transfer':
       case 'wise':
       case 'pay_later': {
         const order = await this._saveOrderToDb({ ...dto, ...totals, userId });
         await this._sendTelegramNotification(order);
-
+        
         if (['bank_transfer', 'wise'].includes(paymentMethod.code)) {
           const configObject = typeof paymentMethod.config === 'object' && paymentMethod.config !== null ? paymentMethod.config : {};
           const instructions = { ...configObject, amount: order.total, paymentDueDate: order.paymentDueDate };
@@ -165,38 +161,24 @@ export class OrdersService {
         if (!mappedOrder) throw new InternalServerErrorException('Gagal memproses order.');
         return { ...mappedOrder, paymentType: 'DEFERRED' };
       }
-
       default:
         throw new BadRequestException('Metode pembayaran tidak didukung.');
     }
   }
   
-  async finalizePaypalOrder(
-    userId: number,
-    dto: CreateOrderDto,
-    paypalCaptureDetails: any,
-  ): Promise<OrderResponseDto> {
-    this.logger.log(`[PayPal Finalize] Creating internal order for PayPal Order ID: ${paypalCaptureDetails.id}`);
+  async finalizePaypalOrder(userId: number, dto: CreateOrderDto, paypalCaptureDetails: any): Promise<OrderResponseDto> {
+    this.logger.log(`[PayPal Finalize] Membuat order internal untuk PayPal Order ID: ${paypalCaptureDetails.id}`);
     
     const totals = await this._calculateTotals(dto);
 
-    const finalOrderPayload: SaveOrderPayload = {
-      ...dto,
-      ...totals,
-      userId,
-      paypalOrderId: paypalCaptureDetails.id,
-      paypalCaptureDetails: paypalCaptureDetails,
-    };
-    
-    const order = await this._saveOrderToDb(finalOrderPayload, true);
+    const order = await this._saveOrderToDb({ ...dto, ...totals, userId, paypalOrderId: paypalCaptureDetails.id, paypalCaptureDetails }, true);
     await this._sendTelegramNotification(order);
     
     const orderDto = mapOrderToDto(order);
     if (!orderDto) {
-      this.logger.error(`Gagal memetakan order #${order.id} yang baru dibuat ke DTO.`);
+      this.logger.error(`Gagal memetakan order #${order.id} ke DTO.`);
       throw new InternalServerErrorException('Gagal memproses order yang telah dibuat.');
     }
-    
     return orderDto;
   }
 
@@ -207,6 +189,7 @@ export class OrdersService {
     paymentDueDate.setDate(paymentDueDate.getDate() + 2);
 
     return this.prisma.$transaction(async (tx) => {
+      // Kurangi stok produk
       for (const item of orderItems) {
         await tx.product.update({
           where: { id: item.productId },
@@ -214,6 +197,7 @@ export class OrdersService {
         });
       }
 
+      // Buat record Order baru
       const newOrder = await tx.order.create({
         data: {
           userId,
@@ -221,25 +205,19 @@ export class OrdersService {
           shippingCost,
           subtotal,
           total,
-          paymentStatus: isPaid ? PaymentStatus.PAID : PaymentStatus.PENDING,
-          orderStatus: isPaid ? OrderStatus.PROCESSING : OrderStatus.PENDING_PAYMENT,
+          paymentStatus: isPaid ? PaymentStatus.PAID : PaymentStatus.PENDING_PAYMENT,
+          orderStatus: isPaid ? OrderStatus.PROCESSING : OrderStatus.PENDING,
           paymentMethodId,
           paymentDueDate: isPaid ? null : paymentDueDate,
           currencyCode,
           midtransOrderId,
           paypalOrderId,
-          paymentDetails: paypalCaptureDetails ? {
-            paypalOrderId: paypalCaptureDetails.id,
-            captureId: paypalCaptureDetails.purchase_units?.[0]?.payments?.captures?.[0]?.id,
-            status: paypalCaptureDetails.status,
-            payer: paypalCaptureDetails.payer,
-          } as unknown as Prisma.InputJsonValue : Prisma.JsonNull,
+          paymentDetails: paypalCaptureDetails ? (paypalCaptureDetails as Prisma.JsonObject) : Prisma.JsonNull,
           orderItems: {
             create: orderItems.map((item) => {
               const product = productMap.get(item.productId);
-              if (!product || !product.prices[0]) {
-                throw new InternalServerErrorException(`Produk ${item.productId} tidak valid saat menyimpan item order.`);
-              }
+              if (!product) throw new InternalServerErrorException(`Produk ${item.productId} tidak valid.`);
+              
               return {
                 productId: item.productId,
                 productName: product.name ?? Prisma.JsonNull,
@@ -252,7 +230,7 @@ export class OrdersService {
             }),
           },
         },
-        include: { user: true, orderItems: { include: { product: true } }, paymentMethod: true },
+        include: { user: true, orderItems: { include: { product: { include: { images: { take: 1, orderBy: { id: 'asc' } } } } } }, paymentMethod: true },
       });
 
       await this.cartService.clearCart(userId);
@@ -325,7 +303,7 @@ export class OrdersService {
       this.prisma.order.findMany({
         skip,
         take: limit,
-        include: { user: true, orderItems: { include: { product: true } }, paymentMethod: true },
+        include: { user: true, orderItems: { include: { product: { include: { images: { take: 1, orderBy: { id: 'asc' } } } } } }, paymentMethod: true },
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.order.count(),
@@ -337,7 +315,7 @@ export class OrdersService {
   async findUserOrders(userId: number) {
     const orders = await this.prisma.order.findMany({
       where: { userId },
-      include: { user: true, orderItems: { include: { product: true } }, paymentMethod: true },
+      include: { user: true, orderItems: { include: { product: { include: { images: { take: 1, orderBy: { id: 'asc' } } } } } }, paymentMethod: true },
       orderBy: { createdAt: 'desc' },
     });
     return orders.map(mapOrderToDto).filter((o): o is OrderResponseDto => o !== null);
@@ -346,16 +324,12 @@ export class OrdersService {
   async findOne(id: number, userId?: number) {
     const order = await this.prisma.order.findUnique({
       where: { id },
-      include: { user: true, orderItems: { include: { product: true } }, paymentMethod: true },
+      include: { user: true, orderItems: { include: { product: { include: { images: { take: 1, orderBy: { id: 'asc' } } } } } }, paymentMethod: true },
     });
     if (!order) throw new NotFoundException('Order tidak ditemukan.');
     if (userId && order.userId !== userId) throw new ForbiddenException('Akses ditolak.');
     
-    const mappedOrder = mapOrderToDto(order);
-    if (!mappedOrder) {
-        throw new InternalServerErrorException('Gagal memproses detail order.');
-    }
-    return mappedOrder;
+    return mapOrderToDto(order);
   }
   
   async update(id: number, dto: UpdateOrderDto) {
@@ -382,11 +356,7 @@ export class OrdersService {
     if (!orderData) {
       throw new NotFoundException('Order tidak ditemukan atau akses ditolak.');
     }
-
-    // Tentukan bahasa berdasarkan currencyCode dari order
     const lang = orderData.currencyCode === 'IDR' ? 'id' : 'en';
-
-    // Kirim informasi bahasa (lang) ke PdfService
     return this.pdfService.generateInvoicePdf(orderData, lang);
   }
 
@@ -401,7 +371,7 @@ export class OrdersService {
     if (!order) {
       throw new NotFoundException('Order tidak ditemukan atau Anda tidak memiliki izin.');
     }
-    if (order.orderStatus !== OrderStatus.PENDING_PAYMENT) {
+    if (order.paymentStatus !== PaymentStatus.PENDING_PAYMENT) {
       throw new BadRequestException('Pembayaran hanya bisa dicoba ulang untuk order yang menunggu pembayaran.');
     }
     if (!order.paymentMethod) {
@@ -493,7 +463,8 @@ export class OrdersService {
     this.logger.log('Menjalankan cron job untuk memeriksa order kedaluwarsa...');
     const expiredOrders = await this.prisma.order.findMany({
       where: { 
-        orderStatus: OrderStatus.PENDING_PAYMENT,
+        orderStatus: OrderStatus.PENDING, // Seharusnya PENDING, bukan PENDING_PAYMENT
+        paymentStatus: PaymentStatus.PENDING_PAYMENT,
         paymentDueDate: { lt: new Date() } 
       },
       include: { orderItems: true },
@@ -505,7 +476,10 @@ export class OrdersService {
         await this.prisma.$transaction(async (tx) => {
           await tx.order.update({ 
             where: { id: order.id }, 
-            data: { paymentStatus: PaymentStatus.CANCELLED, orderStatus: OrderStatus.CANCELLED } 
+            data: { 
+                paymentStatus: PaymentStatus.EXPIRED, // Gunakan status EXPIRED
+                orderStatus: OrderStatus.CANCELLED 
+            } 
           });
           for (const item of order.orderItems) {
             if (item.productId) {
@@ -513,7 +487,7 @@ export class OrdersService {
             }
           }
         });
-        this.logger.log(`Order #${order.id} kedaluwarsa. Status diubah ke CANCELLED dan stok dikembalikan.`);
+        this.logger.log(`Order #${order.id} kedaluwarsa. Status diubah ke EXPIRED/CANCELLED dan stok dikembalikan.`);
       }
     } else {
       this.logger.log('Tidak ada order kedaluwarsa yang ditemukan.');
@@ -521,8 +495,10 @@ export class OrdersService {
   }
 }
 
+// --- FUNGSI HELPER YANG DIREVISI ---
 const mapOrderToDto = (order: OrderWithDetails | null): OrderResponseDto | null => {
   if (!order) return null;
+
   return {
     id: order.id,
     address: order.address,
@@ -535,18 +511,28 @@ const mapOrderToDto = (order: OrderWithDetails | null): OrderResponseDto | null 
     createdAt: order.createdAt,
     updatedAt: order.updatedAt,
     paymentDueDate: order.paymentDueDate ?? undefined,
-    orderItems: order.orderItems.map((item) => ({
-      id: item.id,
-      qty: item.qty,
-      price: item.price,
-      subtotal: item.subtotal,
-      productName: (item.productName ?? {}) as any,
-      productVariant: item.productVariant === null ? undefined : (item.productVariant as any),
-      productImage: item.productImage ?? undefined,
-      product: item.product
-        ? { id: item.product.id, name: (item.product.name ?? {}) as any }
-        : undefined,
-    })),
+    orderItems: order.orderItems.map((item) => {
+      // --- INI ADALAH LOGIKA PENGAMBILAN DATA HIBRIDA ---
+      const isProductAvailable = !!item.product;
+      return {
+        id: item.id,
+        qty: item.qty,
+        price: item.price,
+        subtotal: item.subtotal,
+        // Gunakan data LIVE jika produk ada, jika tidak, gunakan data SNAPSHOT
+        productName: isProductAvailable && item.product ? (item.product.name as any) : (item.productName as any),
+        productVariant: isProductAvailable && item.product ? (item.product.variant as any) : (item.productVariant as any),
+        productImage: isProductAvailable && item.product
+          ? item.product.images[0]?.url
+          : item.productImage === null
+            ? undefined
+            : item.productImage,
+        // Kirim data produk minimalis jika ada
+        product: isProductAvailable && item.product
+          ? { id: item.product.id, name: (item.product.name as any) }
+          : undefined,
+      };
+    }),
     paymentMethod: order.paymentMethod ? {
       id: order.paymentMethod.id,
       name: order.paymentMethod.name,
