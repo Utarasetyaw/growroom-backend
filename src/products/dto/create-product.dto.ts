@@ -7,106 +7,132 @@ import {
     IsOptional,
     Min,
     IsNumber,
-    ValidateNested,
-    IsArray
+    IsJSON, // 1. Import IsJSON
 } from 'class-validator';
 
-// DTO untuk objek multibahasa
-class MultiLanguageDto {
-    @IsOptional()
-    @IsString()
-    id?: string;
+// Catatan: DTO di bawah ini (MultiLanguageDto, PriceDto, CareDetailDto)
+// tidak lagi digunakan secara langsung untuk validasi di sini,
+// tetapi struktur ini merepresentasikan bentuk JSON yang diharapkan di dalam string.
 
-    @IsOptional()
-    @IsString()
+class MultiLanguageDto {
+    id?: string;
     en?: string;
 }
 
-// DTO untuk setiap item harga
 class PriceDto {
-    @ApiProperty()
-    @IsInt()
     currencyId: number;
-
-    @ApiProperty()
-    @IsNumber()
     price: number;
 }
 
-// DTO untuk setiap item detail perawatan
 class CareDetailDto {
-    @ApiProperty()
-    @ValidateNested()
-    @Type(() => MultiLanguageDto)
     name: MultiLanguageDto;
-
-    @ApiProperty()
-    @ValidateNested()
-    @Type(() => MultiLanguageDto)
     value: MultiLanguageDto;
 }
 
 
 export class CreateProductDto {
-  @ApiProperty({ description: 'Nama produk (multibahasa)', type: MultiLanguageDto, example: '{"id": "Monstera Deliciosa", "en": "Swiss Cheese Plant"}' })
-  @ValidateNested()
-  @Type(() => MultiLanguageDto)
-  @Transform(({ value }) => typeof value === 'string' ? JSON.parse(value) : value)
-  name: MultiLanguageDto;
+  /**
+   * Nama produk dalam format JSON string.
+   * @example '{"id": "Monstera Deliciosa", "en": "Swiss Cheese Plant"}'
+   */
+  @ApiProperty({ 
+    description: 'Nama produk (JSON string)', 
+    example: '{"id": "Monstera Deliciosa", "en": "Swiss Cheese Plant"}' 
+  })
+  @IsString()
+  @IsJSON({ message: 'Nama produk harus berupa JSON string yang valid.' })
+  name: string; // 2. Ubah tipe menjadi string
 
-  @ApiProperty({ description: 'Varian produk (multibahasa)', type: MultiLanguageDto, example: '{"id": "Variegata", "en": "Variegated"}' })
-  @ValidateNested()
-  @Type(() => MultiLanguageDto)
-  @Transform(({ value }) => typeof value === 'string' ? JSON.parse(value) : value)
-  variant: MultiLanguageDto;
+  /**
+   * Varian produk dalam format JSON string.
+   * @example '{"id": "Variegata", "en": "Variegated"}'
+   */
+  @ApiProperty({ 
+    description: 'Varian produk (JSON string)', 
+    example: '{"id": "Variegata", "en": "Variegated"}' 
+  })
+  @IsString()
+  @IsJSON({ message: 'Varian produk harus berupa JSON string yang valid.' })
+  variant: string; // 3. Ubah tipe menjadi string
 
-  @ApiPropertyOptional({ description: 'Deskripsi produk (multibahasa)', type: MultiLanguageDto, example: '{"id": "Tanaman hias populer...", "en": "A popular houseplant..."}' })
+  /**
+   * Deskripsi produk dalam format JSON string (opsional).
+   * @example '{"id": "Tanaman hias populer...", "en": "A popular houseplant..."}'
+   */
+  @ApiPropertyOptional({ 
+    description: 'Deskripsi produk (JSON string)', 
+    example: '{"id": "Tanaman hias populer...", "en": "A popular houseplant..."}' 
+  })
   @IsOptional()
-  @ValidateNested()
-  @Type(() => MultiLanguageDto)
-  @Transform(({ value }) => typeof value === 'string' ? JSON.parse(value) : value)
-  description?: MultiLanguageDto;
+  @IsString()
+  @IsJSON({ message: 'Deskripsi produk harus berupa JSON string yang valid.' })
+  description?: string; // 4. Ubah tipe menjadi string
 
+  /**
+   * Jumlah stok produk.
+   */
   @ApiProperty({ description: 'Jumlah stok produk', example: 100 })
   @Type(() => Number)
   @IsInt()
   @Min(0)
   stock: number;
 
+  /**
+   * Berat produk dalam gram (opsional).
+   */
   @ApiPropertyOptional({ description: 'Berat produk dalam gram', example: 500 })
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   weight?: number;
   
-  @ApiProperty({ description: 'Detail perawatan', type: [CareDetailDto], example: '[{"name":{"id":"Penyiraman","en":"Watering"},"value":{"id":"Seminggu sekali","en":"Once a week"}}]' })
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => CareDetailDto)
-  @Transform(({ value }) => typeof value === 'string' ? JSON.parse(value) : value)
-  careDetails: CareDetailDto[];
+  /**
+   * Detail perawatan dalam format JSON string (array of objects).
+   * @example '[{"name":{"id":"Penyiraman","en":"Watering"},"value":{"id":"Seminggu sekali","en":"Once a week"}}]'
+   */
+  @ApiProperty({ 
+    description: 'Detail perawatan (JSON string)', 
+    example: '[{"name":{"id":"Penyiraman","en":"Watering"},"value":{"id":"Seminggu sekali","en":"Once a week"}}]' 
+  })
+  @IsString()
+  @IsJSON({ message: 'Detail perawatan harus berupa JSON string yang valid.' })
+  careDetails: string; // 5. Ubah tipe menjadi string
 
+  /**
+   * Status produk unggulan (opsional).
+   */
   @ApiPropertyOptional({ description: 'Produk unggulan?', default: false, type: 'boolean' })
   @IsOptional()
-  @Transform(({ value }) => value === 'true' || value === true) // Konversi 'true' string ke boolean
+  @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean()
   isBestProduct?: boolean;
 
+  /**
+   * Status produk aktif (opsional).
+   */
   @ApiPropertyOptional({ description: 'Produk aktif?', default: true, type: 'boolean' })
   @IsOptional()
-  @Transform(({ value }) => value === 'true' || value === true) // Konversi 'true' string ke boolean
+  @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean()
   isActive?: boolean;
   
+  /**
+   * ID dari sub-kategori.
+   */
   @ApiProperty({ description: 'ID sub-kategori', example: 1 })
   @Type(() => Number)
   @IsInt()
   subCategoryId: number;
 
-  @ApiProperty({ description: 'Harga produk', type: [PriceDto], example: '[{"currencyId":1,"price":150000},{"currencyId":2,"price":10}]' })
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => PriceDto)
-  @Transform(({ value }) => typeof value === 'string' ? JSON.parse(value) : value)
-  prices: PriceDto[];
+  /**
+   * Harga produk dalam format JSON string (array of objects).
+   * @example '[{"currencyId":1,"price":150000},{"currencyId":2,"price":10}]'
+   */
+  @ApiProperty({ 
+    description: 'Harga produk (JSON string)', 
+    example: '[{"currencyId":1,"price":150000},{"currencyId":2,"price":10}]' 
+  })
+  @IsString()
+  @IsJSON({ message: 'Harga produk harus berupa JSON string yang valid.' })
+  prices: string; // 6. Ubah tipe menjadi string
 }

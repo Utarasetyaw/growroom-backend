@@ -10,7 +10,7 @@ import {
   UseGuards,
   UseInterceptors,
   UploadedFiles,
-  BadRequestException, // Tetap di-import jika ada logika lain yang mungkin memerlukannya
+  BadRequestException, // Pastikan ini di-import
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import {
@@ -75,11 +75,25 @@ export class ProductsController {
   }))
   create(
     @UploadedFiles() files: Array<Express.Multer.File>,
-    @Body() createProductDto: CreateProductDto, // Langsung gunakan DTO yang sudah divalidasi
+    @Body() createProductDto: CreateProductDto,
   ) {
-    // TIDAK PERLU PARSING JSON LAGI
     const imageUrls = files ? files.map(file => `/uploads/products/${file.filename}`) : [];
-    return this.productsService.create(createProductDto, imageUrls);
+    
+    try {
+      // Buat objek baru untuk menampung data yang sudah di-parsing dari string JSON
+      const parsedDto = {
+        ...createProductDto,
+        name: JSON.parse(createProductDto.name),
+        variant: JSON.parse(createProductDto.variant),
+        description: createProductDto.description ? JSON.parse(createProductDto.description) : undefined,
+        careDetails: JSON.parse(createProductDto.careDetails),
+        prices: JSON.parse(createProductDto.prices),
+      };
+
+      return this.productsService.create(parsedDto, imageUrls);
+    } catch (error) {
+      throw new BadRequestException('Format JSON tidak valid pada salah satu field (name, variant, prices, etc).');
+    }
   }
 
   @Patch(':id')
@@ -100,12 +114,26 @@ export class ProductsController {
   }))
   update(
     @Param('id', ParseIntPipe) id: number,
-    @Body() updateProductDto: UpdateProductDto, // Langsung gunakan DTO yang sudah divalidasi
+    @Body() updateProductDto: UpdateProductDto,
     @UploadedFiles() files?: Array<Express.Multer.File>,
   ) {
-    // TIDAK PERLU PARSING JSON LAGI
     const newImageUrls = files ? files.map(file => `/uploads/products/${file.filename}`) : [];
-    return this.productsService.update(id, updateProductDto, newImageUrls);
+
+    try {
+      // Buat objek baru untuk menampung data yang sudah di-parsing
+      // Kita perlu memeriksa apakah setiap field ada sebelum di-parsing karena ini adalah PATCH
+      const parsedDto: any = { ...updateProductDto };
+
+      if (updateProductDto.name) parsedDto.name = JSON.parse(updateProductDto.name as string);
+      if (updateProductDto.variant) parsedDto.variant = JSON.parse(updateProductDto.variant as string);
+      if (updateProductDto.description) parsedDto.description = JSON.parse(updateProductDto.description as string);
+      if (updateProductDto.careDetails) parsedDto.careDetails = JSON.parse(updateProductDto.careDetails as string);
+      if (updateProductDto.prices) parsedDto.prices = JSON.parse(updateProductDto.prices as string);
+      
+      return this.productsService.update(id, parsedDto, newImageUrls);
+    } catch (error) {
+      throw new BadRequestException('Format JSON tidak valid pada salah satu field yang diupdate.');
+    }
   }
 
   @Delete(':id')
