@@ -13,8 +13,9 @@ import { PaymentStatus, OrderStatus, Prisma } from '@prisma/client';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { PaypalWebhookDto } from './dto/paypal-webhook.dto';
-import { CreateOrderDto } from '../orders/dto/create-order.dto'; // <-- 1. Impor DTO Order
-import { OrdersService } from '../orders/orders.service'; // <-- 2. Impor OrdersService
+// CreateOrderDto tidak lagi dibutuhkan di sini
+// import { CreateOrderDto } from '../orders/dto/create-order.dto';
+import { OrdersService } from '../orders/orders.service';
 
 @Injectable()
 export class PaypalService {
@@ -22,7 +23,6 @@ export class PaypalService {
 
   constructor(
     private prisma: PrismaService,
-    // <-- 3. Gunakan Inject dan forwardRef untuk mengatasi circular dependency
     @Inject(forwardRef(() => OrdersService))
     private ordersService: OrdersService,
   ) {}
@@ -33,11 +33,11 @@ export class PaypalService {
     });
 
     if (!paymentMethod?.config) {
-      throw new InternalServerErrorException('PayPal configuration not found in database.');
+      throw new InternalServerErrorException('Konfigurasi PayPal tidak ditemukan di database.');
     }
     const config = paymentMethod.config as any;
     if (!config.clientId || !config.clientSecret) {
-      throw new InternalServerErrorException('PayPal clientId or clientSecret is missing in config.');
+      throw new InternalServerErrorException('PayPal clientId atau clientSecret tidak ada di config.');
     }
 
     const environment =
@@ -48,17 +48,14 @@ export class PaypalService {
     return new paypal.core.PayPalHttpClient(environment);
   }
 
-  /**
-   * FUNGSI INI TIDAK BERUBAH.
-   * Dipanggil oleh OrdersService untuk membuat order di server PayPal.
-   */
+  // Fungsi ini tidak berubah
   async createPaypalOrder(
     total: number,
     currencyCode: string,
     paymentMethodId: number,
     customReferenceId: string,
   ) {
-    this.logger.log(`[PayPal] Creating order for custom reference: ${customReferenceId}`);
+    this.logger.log(`[PayPal] Membuat order untuk referensi: ${customReferenceId}`);
     const client = await this.getPayPalClient(paymentMethodId);
     const request = new paypal.orders.OrdersCreateRequest();
     request.prefer('return=representation');
@@ -76,88 +73,99 @@ export class PaypalService {
 
     try {
       const response = await client.execute(request);
-      this.logger.log(`[PayPal] Order created with ID: ${response.result.id}`);
+      this.logger.log(`[PayPal] Order dibuat dengan ID: ${response.result.id}`);
       return response.result;
     } catch (err) {
       const errorDetails = err.message ? JSON.parse(err.message) : 'Unknown PayPal Error';
-      this.logger.error(`[PayPal] Failed to create order for ${customReferenceId}:`, errorDetails);
-      throw new InternalServerErrorException({ message: 'Failed to create PayPal order.', details: errorDetails?.details });
+      this.logger.error(`[PayPal] Gagal membuat order untuk ${customReferenceId}:`, errorDetails);
+      throw new InternalServerErrorException({ message: 'Gagal membuat order PayPal.', details: errorDetails?.details });
     }
   }
 
   /**
-   * REVISI TOTAL: Fungsi ini sekarang melakukan capture DAN membuat order internal.
-   * Dipanggil oleh PaypalController setelah user menyetujui pembayaran.
+   * REVISI TOTAL: Fungsi ini sekarang melakukan capture dan mengupdate order internal.
    */
-  async captureAndCreateOrder(
-    paypalOrderId: string,
-    orderDto: CreateOrderDto,
-    userId: number,
-  ) {
-    this.logger.log(`[PayPal] Capturing and creating internal order for PayPal ID: ${paypalOrderId}`);
+  async capturePaymentAndUpdateOrder(paypalOrderId: string, userId: number) {
+    this.logger.log(`[PayPal] Menangkap pembayaran dan mengupdate order internal untuk PayPal ID: ${paypalOrderId}`);
     
-    const paymentMethod = await this.prisma.paymentMethod.findUnique({
-      where: { id: orderDto.paymentMethodId },
+    // 1. Cari order yang sesuai di database kita.
+    const order = await this.prisma.order.findFirst({
+      where: {
+        paypalOrderId: paypalOrderId,
+        userId: userId, // Pastikan user adalah pemilik order ini
+      },
     });
-    if (!paymentMethod) throw new BadRequestException('Invalid payment method ID provided.');
 
-    const client = await this.getPayPalClient(paymentMethod.id);
+    if (!order) {
+      throw new NotFoundException(`Order dengan PayPal ID ${paypalOrderId} tidak ditemukan atau akses ditolak.`);
+    }
+
+    if (order.paymentStatus !== PaymentStatus.PENDING_PAYMENT) {
+      throw new BadRequestException(`Order #${order.id} tidak sedang menunggu pembayaran.`);
+    }
+    
+    if (!order.paymentMethodId) {
+        throw new InternalServerErrorException(`Order #${order.id} tidak memiliki paymentMethodId.`);
+    }
+
+    const client = await this.getPayPalClient(order.paymentMethodId);
     const request = new paypal.orders.OrdersCaptureRequest(paypalOrderId);
     request.requestBody({});
 
     try {
-      // 1. Lakukan capture pembayaran ke PayPal
+      // 2. Lakukan permintaan 'capture' ke PayPal.
       const captureResponse = await client.execute(request);
       const captureResult = captureResponse.result;
 
-      // 2. Pastikan status capture adalah 'COMPLETED'
       if (captureResult.status !== 'COMPLETED') {
-        this.logger.error(`[PayPal] Capture for ${paypalOrderId} was not completed. Status: ${captureResult.status}`);
-        throw new InternalServerErrorException('PayPal payment could not be completed.');
+        this.logger.error(`[PayPal] Capture untuk ${paypalOrderId} tidak selesai. Status: ${captureResult.status}`);
+        // Opsional: Update status order menjadi FAILED
+        await this.prisma.order.update({
+            where: { id: order.id },
+            data: { paymentStatus: PaymentStatus.FAILED }
+        });
+        throw new InternalServerErrorException('Pembayaran PayPal tidak dapat diselesaikan.');
       }
 
-      this.logger.log(`[PayPal] Capture for ${paypalOrderId} is COMPLETED. Finalizing internal order...`);
+      this.logger.log(`[PayPal] Capture untuk ${paypalOrderId} SELESAI. Mengupdate order internal #${order.id}...`);
 
-      // 3. Panggil OrdersService untuk menyimpan order ke database dengan status lunas
-      const createdOrder = await this.ordersService.finalizePaypalOrder(
-        userId,
-        orderDto,
-        captureResult, // Kirim detail capture untuk disimpan di 'paymentDetails'
-      );
+      // 3. Update order internal kita dengan status baru dan detail pembayaran.
+      await this.prisma.order.update({
+          where: { id: order.id },
+          data: {
+              paymentStatus: PaymentStatus.PAID,
+              orderStatus: OrderStatus.PROCESSING,
+              paymentDetails: captureResult as Prisma.JsonObject,
+              paymentDueDate: null, // Pembayaran lunas, tidak ada lagi tanggal jatuh tempo.
+          }
+      });
 
-      return createdOrder;
+      // 4. Ambil data order final yang sudah terupdate untuk dikembalikan ke user.
+      return this.ordersService.findOne(order.id, userId);
 
     } catch (err) {
-      // Tangani error jika parsing JSON gagal atau ada error lain
-      let errorMessage = 'Failed to capture payment';
+      let errorMessage = 'Gagal menangkap pembayaran';
       try {
-        errorMessage = err.message ? JSON.parse(err.message) : 'Failed to capture payment';
+        errorMessage = err.message ? JSON.parse(err.message) : 'Gagal menangkap pembayaran';
       } catch (parseError) {
-        errorMessage = err.message || 'An unexpected error occurred during payment capture.';
+        errorMessage = err.message || 'Terjadi kesalahan tak terduga saat proses pembayaran.';
       }
-      this.logger.error(`[PayPal] Failed to capture payment for ${paypalOrderId}:`, errorMessage);
+      this.logger.error(`[PayPal] Gagal menangkap pembayaran untuk ${paypalOrderId}:`, errorMessage);
       throw new InternalServerErrorException(errorMessage);
     }
   }
 
-  /**
-   * FUNGSI INI TIDAK BERUBAH.
-   * Menangani notifikasi webhook dari PayPal untuk rekonsiliasi.
-   */
+  // Fungsi webhook tidak berubah
   async handleWebhook(headers: any, body: any) {
-    this.logger.log('[PayPal Webhook] Received event.');
+    this.logger.log('[PayPal Webhook] Menerima event.');
     const paymentMethod = await this.prisma.paymentMethod.findFirst({ where: { code: 'paypal', isActive: true } });
-    if (!paymentMethod) throw new InternalServerErrorException('Active PayPal payment method not found for verification.');
+    if (!paymentMethod) throw new InternalServerErrorException('Metode pembayaran PayPal aktif tidak ditemukan untuk verifikasi.');
     
-    // Di sini Anda idealnya memiliki logika untuk memverifikasi signature webhook
-    // menggunakan `webhookId` dari config dan header dari PayPal.
-    // Untuk saat ini, kita akan lanjut ke validasi payload.
-
     const webhookDto = plainToInstance(PaypalWebhookDto, body);
     const errors = await validate(webhookDto);
     if (errors.length > 0) {
-      this.logger.error('[PayPal Webhook] Payload validation failed:', errors);
-      throw new BadRequestException('Webhook payload validation failed.');
+      this.logger.error('[PayPal Webhook] Validasi payload gagal:', errors);
+      throw new BadRequestException('Validasi payload webhook gagal.');
     }
     
     const { event_type: eventType, resource } = webhookDto;
@@ -165,18 +173,17 @@ export class PaypalService {
     if (eventType === 'PAYMENT.CAPTURE.COMPLETED') {
       const paypalCaptureId = resource.id;
 
-      // Cari order berdasarkan ID capture yang ada di dalam paymentDetails
       const order = await this.prisma.order.findFirst({
-        where: { paymentDetails: { path: ['captureId'], equals: paypalCaptureId } },
+        where: { paymentDetails: { path: ['id'], equals: paypalCaptureId } },
       });
 
       if (!order) {
-        this.logger.warn(`[PayPal Webhook] Received capture completed for ${paypalCaptureId}, but no matching order found. This is expected if the capture API call already processed it.`);
+        this.logger.warn(`[PayPal Webhook] Menerima capture completed untuk ${paypalCaptureId}, tapi tidak ada order yang cocok. Ini wajar jika panggilan API sudah memprosesnya.`);
         return { status: 'ignored_already_processed' };
       }
 
       if (order.paymentStatus === 'PAID') {
-        this.logger.log(`[PayPal Webhook] Order #${order.id} is already PAID. No action needed.`);
+        this.logger.log(`[PayPal Webhook] Order #${order.id} sudah LUNAS. Tidak ada tindakan.`);
         return { status: 'ignored_already_paid' };
       }
 
@@ -187,9 +194,9 @@ export class PaypalService {
           orderStatus: OrderStatus.PROCESSING,
         },
       });
-      this.logger.log(`[PayPal Webhook] Confirmed internal order #${order.id} is PAID via webhook.`);
+      this.logger.log(`[PayPal Webhook] Mengkonfirmasi order internal #${order.id} menjadi LUNAS via webhook.`);
     } else {
-        this.logger.log(`[PayPal Webhook] Unhandled event type: ${eventType}. Acknowledging.`);
+        this.logger.log(`[PayPal Webhook] Tipe event tidak ditangani: ${eventType}.`);
     }
 
     return { status: 'processed' };

@@ -7,7 +7,7 @@ import {
   Headers,
   Param,
   UseGuards,
-  Req, // <-- 1. Impor 'Req' dari @nestjs/common
+  Req,
 } from '@nestjs/common';
 import { PaypalService } from './paypal.service';
 import {
@@ -19,8 +19,10 @@ import {
 } from '@nestjs/swagger';
 import { Public } from '../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RequestWithUser } from '../common/interfaces/request-with-user.interface'; // <-- 2. Impor interface request
-import { CreateOrderDto } from '../orders/dto/create-order.dto'; // <-- 3. Impor DTO untuk detail order
+import { RequestWithUser } from '../common/interfaces/request-with-user.interface';
+// CreateOrderDto tidak lagi dibutuhkan di sini
+// import { CreateOrderDto } from '../orders/dto/create-order.dto'; 
+import { OrderResponseDto } from '../orders/dto/order-response.dto';
 
 @ApiTags('PayPal')
 @Controller('paypal')
@@ -28,34 +30,31 @@ export class PaypalController {
   constructor(private readonly paypalService: PaypalService) {}
 
   /**
-   * REVISI: Endpoint ini sekarang tidak hanya melakukan 'capture' pembayaran,
-   * tetapi juga bertanggung jawab untuk membuat order internal di database
-   * SETELAH pembayaran dikonfirmasi berhasil.
+   * REVISI: Endpoint ini sekarang hanya melakukan 'capture' dan mengupdate order
+   * yang sudah ada di database.
    */
   @Post('orders/:paypalOrderId/capture')
-  @UseGuards(JwtAuthGuard) // Tetap gunakan guard untuk keamanan
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'Menyelesaikan (capture) pembayaran PayPal dan membuat order internal',
+    summary: 'Menyelesaikan (capture) pembayaran PayPal dan mengupdate order internal',
     description:
-      'Frontend memanggil endpoint ini setelah user menyetujui pembayaran di jendela PayPal. Endpoint ini akan melakukan capture pembayaran ke PayPal, dan jika berhasil, akan membuat order di database sistem kita dengan status PAID.',
+      'Frontend memanggil endpoint ini setelah user menyetujui pembayaran di jendela PayPal. Endpoint ini akan melakukan capture pembayaran ke PayPal, dan jika berhasil, akan mengupdate status order di database sistem kita menjadi PAID.',
   })
   @ApiResponse({
-    status: 201,
-    description: 'Pembayaran berhasil di-capture dan order internal berhasil dibuat.',
+    status: 200, // Status 200 OK karena ini adalah operasi update
+    description: 'Pembayaran berhasil di-capture dan order internal berhasil diupdate.',
+    type: OrderResponseDto, // Responsnya adalah data order yang sudah final
   })
   async captureOrder(
     @Param('paypalOrderId') paypalOrderId: string,
-    // <-- 4. Terima detail order asli (keranjang, alamat, dll) dari body request
-    @Body() orderDetails: CreateOrderDto,
-    // <-- 5. Gunakan @Req() untuk mendapatkan informasi user dari token JWT
+    // Body tidak lagi diperlukan
     @Req() req: RequestWithUser,
   ) {
     const userId = req.user.userId;
-    // <-- 6. Panggil service dengan semua data yang diperlukan
-    return this.paypalService.captureAndCreateOrder(
+    // Panggil service yang sudah direvisi
+    return this.paypalService.capturePaymentAndUpdateOrder(
       paypalOrderId,
-      orderDetails,
       userId,
     );
   }
@@ -66,7 +65,7 @@ export class PaypalController {
   @ApiOperation({ summary: 'Menerima notifikasi webhook dari PayPal' })
   @ApiOkResponse({ description: 'Webhook diterima dan akan diproses.' })
   handleWebhook(@Headers() headers: any, @Body() body: any) {
-    // Logika webhook tidak perlu diubah karena alur utama sudah benar
+    // Logika webhook tidak perlu diubah
     return this.paypalService.handleWebhook(headers, body);
   }
 }
