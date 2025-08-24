@@ -20,7 +20,6 @@ import { MidtransService } from '../midtrans/midtrans.service';
 import { PaypalService } from '../paypal/paypal.service';
 import { PdfService } from '../pdf/pdf.service';
 
-// Tipe helper (tidak ada perubahan)
 type OrderWithDetails = Prisma.OrderGetPayload<{
   include: {
     user: true;
@@ -61,6 +60,8 @@ export class OrdersService {
     private pdfService: PdfService,
   ) {}
 
+  // ... (Metode create, findAll, findOne, dll tidak berubah) ...
+
   async create(userId: number, dto: CreateOrderDto) {
     const { paymentMethodId } = dto;
 
@@ -78,9 +79,9 @@ export class OrdersService {
 
     const totals = await this._calculateTotals(dto);
 
+    // Logika untuk setiap metode pembayaran
     switch (paymentMethod.code) {
       case 'midtrans': {
-        // Logika Midtrans tidak berubah
         try {
           const orderIdForMidtrans = `ORDER-${userId}-${Date.now()}`;
           const itemDetailsForMidtrans = dto.orderItems.map((item) => {
@@ -121,13 +122,9 @@ export class OrdersService {
           throw new BadRequestException('Gagal memproses pembayaran Midtrans.');
         }
       }
-      // --- PERUBAHAN UTAMA DI SINI ---
       case 'paypal': {
         try {
-          // 1. Simpan order ke database terlebih dahulu dengan status PENDING
           const order = await this._saveOrderToDb({ ...dto, ...totals, userId });
-
-          // 2. Buat order di PayPal menggunakan ID internal kita sebagai referensi
           const refIdForPaypal = `ORDER-${order.id}`;
           const paypalOrderResponse = await this.paypalService.createPaypalOrder(
             totals.total,
@@ -136,16 +133,13 @@ export class OrdersService {
             refIdForPaypal,
           );
           
-          // 3. Update order internal kita dengan PayPal Order ID
           await this.prisma.order.update({
             where: { id: order.id },
             data: { paypalOrderId: paypalOrderResponse.id },
           });
 
-          // 4. Kirim notifikasi (opsional, tapi baik untuk ada)
           await this._sendTelegramNotification(order);
 
-          // 5. Kembalikan PayPal Order ID ke frontend
           return {
             paymentType: 'PAYPAL_CHECKOUT',
             paypalOrderId: paypalOrderResponse.id,
@@ -155,7 +149,6 @@ export class OrdersService {
           throw new BadRequestException('Gagal memproses pembayaran PayPal.');
         }
       }
-      // Logika pembayaran manual tidak berubah
       case 'bank_transfer':
       case 'wise':
       case 'pay_later': {
@@ -178,13 +171,56 @@ export class OrdersService {
         throw new BadRequestException('Metode pembayaran tidak didukung.');
     }
   }
-  
-  // --- METODE INI DIHAPUS ---
-  // Logika finalisasi order PayPal sekarang ditangani sepenuhnya oleh PaypalService
-  // async finalizePaypalOrder(...) { ... }
 
+  // --- PERUBAHAN UTAMA DI SINI ---
+  async update(id: number, dto: UpdateOrderDto) {
+    const { paymentStatus, orderStatus, trackingNumber } = dto;
+
+    const existingOrder = await this.prisma.order.findUnique({
+      where: { id },
+      include: { orderItems: true },
+    });
+
+    if (!existingOrder) {
+      throw new NotFoundException('Order tidak ditemukan.');
+    }
+
+    // Definisikan status-status yang menandakan stok harus dikembalikan
+    const stockReturnPaymentStatuses: PaymentStatus[] = ['FAILED', 'EXPIRED', 'CANCELLED', 'REFUNDED'];
+    const stockReturnOrderStatuses: OrderStatus[] = ['CANCELLED', 'REFUND'];
+
+    // Cek apakah order berpindah DARI status 'stok terpakai' KE status 'stok kembali'
+    const wasStockUsed = !stockReturnPaymentStatuses.includes(existingOrder.paymentStatus) && !stockReturnOrderStatuses.includes(existingOrder.orderStatus);
+    const isStockReturning = (paymentStatus && stockReturnPaymentStatuses.includes(paymentStatus)) || (orderStatus && stockReturnOrderStatuses.includes(orderStatus));
+    
+    const shouldReturnStock = wasStockUsed && isStockReturning;
+
+    await this.prisma.$transaction(async (tx) => {
+      // 1. Update order dengan status baru
+      await tx.order.update({
+        where: { id },
+        data: { paymentStatus, orderStatus, trackingNumber },
+      });
+
+      // 2. Jika kondisi terpenuhi, kembalikan stok
+      if (shouldReturnStock) {
+        this.logger.log(`Mengembalikan stok untuk Order #${id} karena perubahan status.`);
+        for (const item of existingOrder.orderItems) {
+          if (item.productId) {
+            await tx.product.update({
+              where: { id: item.productId },
+              data: { stock: { increment: item.qty } },
+            });
+          }
+        }
+      }
+    });
+
+    return this.findOne(id);
+  }
+
+  // ... (Sisa file seperti _saveOrderToDb, _calculateTotals, findAll, findOne, dll tidak berubah) ...
   private async _saveOrderToDb(payload: SaveOrderPayload, isPaid: boolean = false): Promise<OrderWithDetails> {
-    // Logika di dalam fungsi ini tidak perlu diubah, sudah mendukung alur baru
     const { userId, address, shippingCost, subtotal, total, paymentMethodId, currencyCode, midtransOrderId, paypalOrderId, orderItems, productMap } = payload;
     
     const paymentDueDate = new Date();
@@ -237,8 +273,6 @@ export class OrdersService {
     });
   }
 
-  // Sisa dari file (findAll, findOne, update, _calculateTotals, dll) tidak perlu diubah.
-  // ... (sisa kode Anda) ...
   private async _calculateTotals(dto: CreateOrderDto): Promise<CalculatedTotals> {
     const { orderItems, shippingRateId, currencyCode } = dto;
     if (!orderItems || orderItems.length === 0) {
@@ -331,25 +365,6 @@ export class OrdersService {
     if (userId && order.userId !== userId) throw new ForbiddenException('Akses ditolak.');
     
     return mapOrderToDto(order);
-  }
-  
-  async update(id: number, dto: UpdateOrderDto) {
-    const { paymentStatus, orderStatus, trackingNumber } = dto;
-    const existingOrder = await this.prisma.order.findUnique({ where: { id }, include: { orderItems: true } });
-    if (!existingOrder) throw new NotFoundException('Order tidak ditemukan.');
-    const isStatusChangingToCancelled = existingOrder.orderStatus !== OrderStatus.CANCELLED && orderStatus === OrderStatus.CANCELLED;
-    
-    await this.prisma.$transaction(async (tx) => {
-      await tx.order.update({ where: { id }, data: { paymentStatus, orderStatus, trackingNumber } });
-      if (isStatusChangingToCancelled) {
-        for (const item of existingOrder.orderItems) {
-          if (item.productId) {
-            await tx.product.update({ where: { id: item.productId }, data: { stock: { increment: item.qty } } });
-          }
-        }
-      }
-    });
-    return this.findOne(id);
   }
   
   async generateInvoicePdf(orderId: number, userId?: number): Promise<Buffer> {
