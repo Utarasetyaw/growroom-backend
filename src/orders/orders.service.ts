@@ -60,8 +60,6 @@ export class OrdersService {
     private pdfService: PdfService,
   ) {}
 
-  // ... (Metode create, findAll, findOne, dll tidak berubah) ...
-
   async create(userId: number, dto: CreateOrderDto) {
     const { paymentMethodId } = dto;
 
@@ -172,7 +170,6 @@ export class OrdersService {
     }
   }
 
-  // --- PERUBAHAN UTAMA DI SINI ---
   async update(id: number, dto: UpdateOrderDto) {
     const { paymentStatus, orderStatus, trackingNumber } = dto;
 
@@ -185,24 +182,20 @@ export class OrdersService {
       throw new NotFoundException('Order tidak ditemukan.');
     }
 
-    // Definisikan status-status yang menandakan stok harus dikembalikan
     const stockReturnPaymentStatuses: PaymentStatus[] = ['FAILED', 'EXPIRED', 'CANCELLED', 'REFUNDED'];
     const stockReturnOrderStatuses: OrderStatus[] = ['CANCELLED', 'REFUND'];
 
-    // Cek apakah order berpindah DARI status 'stok terpakai' KE status 'stok kembali'
     const wasStockUsed = !stockReturnPaymentStatuses.includes(existingOrder.paymentStatus) && !stockReturnOrderStatuses.includes(existingOrder.orderStatus);
     const isStockReturning = (paymentStatus && stockReturnPaymentStatuses.includes(paymentStatus)) || (orderStatus && stockReturnOrderStatuses.includes(orderStatus));
     
     const shouldReturnStock = wasStockUsed && isStockReturning;
 
     await this.prisma.$transaction(async (tx) => {
-      // 1. Update order dengan status baru
       await tx.order.update({
         where: { id },
         data: { paymentStatus, orderStatus, trackingNumber },
       });
 
-      // 2. Jika kondisi terpenuhi, kembalikan stok
       if (shouldReturnStock) {
         this.logger.log(`Mengembalikan stok untuk Order #${id} karena perubahan status.`);
         for (const item of existingOrder.orderItems) {
@@ -219,7 +212,6 @@ export class OrdersService {
     return this.findOne(id);
   }
 
-  // ... (Sisa file seperti _saveOrderToDb, _calculateTotals, findAll, findOne, dll tidak berubah) ...
   private async _saveOrderToDb(payload: SaveOrderPayload, isPaid: boolean = false): Promise<OrderWithDetails> {
     const { userId, address, shippingCost, subtotal, total, paymentMethodId, currencyCode, midtransOrderId, paypalOrderId, orderItems, productMap } = payload;
     
@@ -321,7 +313,7 @@ export class OrdersService {
     const totalFormatted = order.total.toLocaleString('id-ID', { style: 'currency', currency: order.currencyCode });
     const dashboardUrl = `${process.env.DASHBOARD_URL || 'http://localhost:3000'}/orders/${order.id}`;
     const text = `
- *Pesanan Baru Diterima: #${order.id}*
+*Pesanan Baru Diterima: #${order.id}*
 *Pelanggan:* ${order.user.name} (\`${order.user.email}\`)
 *Total:* *${totalFormatted}*
 *Metode:* ${order.paymentMethod?.name || 'N/A'}
@@ -379,9 +371,20 @@ export class OrdersService {
   async retryPayment(orderId: number, userId: number) {
     this.logger.log(`User #${userId} mencoba membayar ulang order #${orderId}`);
     
+    // --- PERUBAHAN DI SINI: Query diperbaiki untuk mengambil data secara lengkap ---
     const order = await this.prisma.order.findFirst({
       where: { id: orderId, userId },
-      include: { user: true, paymentMethod: true, orderItems: true },
+      include: {
+        user: true,
+        paymentMethod: true,
+        orderItems: {
+          include: {
+            product: {
+              include: { images: { take: 1, orderBy: { id: 'asc' } } },
+            },
+          },
+        },
+      },
     });
 
     if (!order) {
@@ -444,6 +447,9 @@ export class OrdersService {
             amount: order.total, 
             paymentDueDate: order.paymentDueDate 
         };
+        
+        // --- BLOK INI DIHAPUS karena data sudah lengkap dari query awal ---
+        /*
         const orderWithProducts = {
             ...order,
             orderItems: await Promise.all(
@@ -455,7 +461,11 @@ export class OrdersService {
                 }))
             ),
         };
-        const mappedOrder = mapOrderToDto(orderWithProducts as OrderWithDetails);
+        */
+
+        // Langsung gunakan 'order' karena sudah valid sesuai tipe OrderWithDetails
+        const mappedOrder = mapOrderToDto(order);
+
         if (!mappedOrder) {
             throw new InternalServerErrorException('Gagal memproses detail order.');
         }
