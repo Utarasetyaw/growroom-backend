@@ -12,8 +12,8 @@ import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { ChatService } from './chat.service';
 import { ConversationsService } from '../conversations/conversations.service';
-import { PrismaService } from '../prisma/prisma.service'; // <-- IMPORT PRISMA
-import { sendTelegramMessage } from '../utils/telegram.util'; // <-- IMPORT TELEGRAM UTIL
+import { PrismaService } from '../prisma/prisma.service';
+import { sendTelegramMessage } from '../utils/telegram.util';
 import { Role } from '@prisma/client';
 import { Logger } from '@nestjs/common';
 
@@ -26,7 +26,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     private readonly jwtService: JwtService,
     private readonly chatService: ChatService,
     private readonly conversationsService: ConversationsService,
-    private readonly prisma: PrismaService, // <-- INJECT PRISMA
+    private readonly prisma: PrismaService,
   ) {}
 
   afterInit(server: Server) {
@@ -44,7 +44,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
         userId: payload.sub,
         email: payload.email,
         role: payload.role,
-        name: payload.name, // Pastikan 'name' ada di JWT payload Anda
+        name: payload.name,
       };
 
       if (client.data.user.role === Role.ADMIN || client.data.user.role === Role.OWNER) {
@@ -89,11 +89,10 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       return;
     }
 
-    let conversation;
     let finalConversationId: number;
 
     if (user.role === Role.USER) {
-      conversation = await this.conversationsService.findOrCreateForUser(user.userId);
+      const conversation = await this.conversationsService.findOrCreateForUser(user.userId);
       finalConversationId = conversation.id;
     } else {
       if (!targetConversationId) {
@@ -105,35 +104,37 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
 
     const message = await this.chatService.saveMessage(finalConversationId, user.userId, content);
 
-    // Kirim pesan ke room WebSocket
     const roomName = `room-${finalConversationId}`;
     this.server.to(roomName).emit('newMessage', message);
 
-    // Kirim notifikasi ke admin jika pengirim adalah USER
+    // --- PERUBAHAN LOGIKA NOTIFIKASI ---
     if (user.role === Role.USER) {
       this.server.to('room-admins').emit('adminNotification', {
         type: 'NEW_MESSAGE',
         conversationId: finalConversationId,
         message,
       });
-      // --- LOGIKA NOTIFIKASI TELEGRAM DIMULAI DI SINI ---
-      this._sendTelegramNotification(message);
+      this._sendUserNotification(message);
+    } else if (user.role === Role.ADMIN || user.role === Role.OWNER) {
+      // Panggil fungsi notifikasi baru untuk balasan admin/owner
+      this._sendAdminReplyNotification(message);
     }
     
     return message;
   }
 
-  private async _sendTelegramNotification(chatMessage: any): Promise<void> {
-    this.logger.log('[Telegram] 1. Memulai proses pengecekan notifikasi...');
+  /**
+   * Mengirim notifikasi ke Telegram saat USER mengirim pesan.
+   */
+  private async _sendUserNotification(chatMessage: any): Promise<void> {
+    this.logger.log('[Telegram] Memulai proses notifikasi pesan user...');
 
     const setting = await this.prisma.generalSetting.findUnique({ where: { id: 1 } });
-    this.logger.log('[Telegram] 2. Mengambil data setting dari database...');
     
     if (!setting?.telegramBotToken || !setting?.telegramChatId) {
-      this.logger.error('[Telegram] 3. Proses dihentikan: Bot Token atau Chat ID tidak ditemukan.');
+      this.logger.error('[Telegram] Proses dihentikan: Bot Token atau Chat ID tidak ditemukan.');
       return;
     }
-    this.logger.log('[Telegram] 3. Setting ditemukan. Melanjutkan...');
 
     const senderName = chatMessage.sender.name || `User #${chatMessage.senderId}`;
     const senderEmail = chatMessage.sender.email;
@@ -152,7 +153,54 @@ Klik tombol di bawah untuk melihat dan membalasnya.
 [Buka Percakapan](${dashboardUrl})
     `;
 
-    this.logger.log(`[Telegram] 4. Siap mengirim notifikasi ke Chat ID: ${setting.telegramChatId}`);
+    sendTelegramMessage(setting.telegramBotToken, setting.telegramChatId, notifText);
+  }
+
+  /**
+   * Mengirim notifikasi ke Telegram saat ADMIN/OWNER membalas pesan.
+   */
+  private async _sendAdminReplyNotification(chatMessage: any): Promise<void> {
+    this.logger.log('[Telegram] Memulai proses notifikasi balasan admin...');
+
+    const setting = await this.prisma.generalSetting.findUnique({ where: { id: 1 } });
+    if (!setting?.telegramBotToken || !setting?.telegramChatId) {
+      this.logger.error('[Telegram] Proses dihentikan: Bot Token atau Chat ID tidak ditemukan.');
+      return;
+    }
+
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: chatMessage.conversationId },
+      include: { user: true }
+    });
+
+    if (!conversation) {
+        this.logger.error(`[Telegram] Gagal menemukan percakapan dengan ID: ${chatMessage.conversationId}`);
+        return;
+    }
+
+    const adminName = chatMessage.sender.name || `Staff #${chatMessage.senderId}`;
+    const adminRole = chatMessage.sender.role;
+    const targetUserName = conversation.user.name;
+    const conversationId = chatMessage.conversationId;
+    const messageContent = chatMessage.content;
+    const messageTime = new Date(chatMessage.createdAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' });
+    const dashboardUrl = `${process.env.DASHBOARD_URL || 'http://localhost:3000'}/chats/${conversationId}`;
+
+    const notifText = `
+✅ *Pesan Telah Dibalas*
+
+*${adminRole}* (${adminName}) telah membalas pesan untuk *${targetUserName}* di percakapan *#${conversationId}*.
+
+*Waktu:* ${messageTime} WIB
+*Isi Pesan:*
+\`\`\`
+${messageContent}
+\`\`\`
+
+[Lihat Percakapan](${dashboardUrl})
+    `;
+
+    this.logger.log(`[Telegram] Siap mengirim notifikasi balasan ke Chat ID: ${setting.telegramChatId}`);
     sendTelegramMessage(setting.telegramBotToken, setting.telegramChatId, notifText);
   }
 }

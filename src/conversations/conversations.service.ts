@@ -60,9 +60,17 @@ export class ConversationsService {
           orderBy: { createdAt: 'desc' },
           take: 1,
           include: {
-            sender: { select: { role: true } }
-          }
-        }
+            // PERBAIKAN DI SINI: Meminta data sender yang lengkap.
+            sender: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                role: true,
+              },
+            },
+          },
+        },
       },
       orderBy: { updatedAt: 'desc' },
     });
