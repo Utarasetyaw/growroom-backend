@@ -8,9 +8,21 @@ export class ChatService {
 
   // Simpan message baru
   async saveMessage(conversationId: number, senderId: number, content: string) {
+    // PERBAIKAN DI SINI:
+    // Menggunakan 'select' eksplisit pada 'sender' untuk memastikan data yang dikirim
+    // melalui WebSocket selalu lengkap dan konsisten.
     return this.prisma.chatMessage.create({
       data: { conversationId, senderId, content },
-      include: { sender: true },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+          },
+        },
+      },
     });
   }
 
@@ -19,7 +31,16 @@ export class ChatService {
     return this.prisma.chatMessage.findMany({
       where: { conversationId },
       orderBy: { createdAt: 'asc' },
-      include: { sender: true },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+          },
+        },
+      },
     });
   }
 }
