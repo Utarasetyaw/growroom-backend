@@ -16,8 +16,9 @@ export class LanguagesController {
   constructor(private readonly languagesService: LanguagesService) {}
 
   @Get()
-  @Roles(Role.OWNER)
-  @ApiOperation({ summary: 'Mendapatkan semua bahasa (Owner Only)' })
+  // PERBAIKAN: Menambahkan Role.ADMIN untuk memberikan izin baca
+  @Roles(Role.OWNER, Role.ADMIN)
+  @ApiOperation({ summary: 'Mendapatkan semua bahasa (Owner & Admin)' })
   @ApiResponse({ status: 200, description: 'List semua bahasa.', type: [LanguageResponseDto] })
   findAll() {
     return this.languagesService.findAll();

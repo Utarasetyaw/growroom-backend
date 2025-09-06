@@ -41,16 +41,18 @@ export class SubcategoriesController {
   constructor(private readonly service: SubcategoriesService) {}
 
   @Get()
-  @Roles(Role.OWNER)
-  @ApiOperation({ summary: 'Mendapatkan semua sub-kategori (Owner Only)' })
+  // PERBAIKAN: Menambahkan Role.ADMIN untuk memberikan izin baca
+  @Roles(Role.OWNER, Role.ADMIN)
+  @ApiOperation({ summary: 'Mendapatkan semua sub-kategori (Owner & Admin)' })
   @ApiResponse({ status: 200, description: 'List semua sub-kategori berhasil diambil.', type: [SubcategoryResponseDto] })
   findAll() {
     return this.service.findAll();
   }
 
   @Get(':id')
-  @Roles(Role.OWNER)
-  @ApiOperation({ summary: 'Mendapatkan detail satu sub-kategori (Owner Only)' })
+  // PERBAIKAN: Menambahkan Role.ADMIN untuk memberikan izin baca
+  @Roles(Role.OWNER, Role.ADMIN)
+  @ApiOperation({ summary: 'Mendapatkan detail satu sub-kategori (Owner & Admin)' })
   @ApiParam({ name: 'id', description: 'ID unik dari sub-kategori', example: 1 })
   @ApiResponse({ status: 200, description: 'Detail sub-kategori berhasil diambil.', type: SubcategoryResponseDto })
   @ApiNotFoundResponse({ description: 'Sub-kategori dengan ID tersebut tidak ditemukan.' })

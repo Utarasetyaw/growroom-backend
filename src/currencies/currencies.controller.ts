@@ -16,8 +16,9 @@ export class CurrenciesController {
   constructor(private readonly currenciesService: CurrenciesService) {}
 
   @Get()
-  @Roles(Role.OWNER)
-  @ApiOperation({ summary: 'Mendapatkan semua mata uang (Owner Only)' })
+  // PERBAIKAN: Menambahkan Role.ADMIN untuk memberikan izin baca
+  @Roles(Role.OWNER, Role.ADMIN)
+  @ApiOperation({ summary: 'Mendapatkan semua mata uang (Owner & Admin)' })
   @ApiResponse({ status: 200, description: 'List semua mata uang.', type: [CurrencyResponseDto] })
   findAll() {
     return this.currenciesService.findAll();

@@ -23,16 +23,18 @@ export class CategoriesController {
   constructor(private readonly service: CategoriesService) {}
 
   @Get()
-  @Roles(Role.OWNER)
-  @ApiOperation({ summary: 'Dapatkan semua kategori (OWNER only)' })
+  // PERBAIKAN: Menambahkan Role.ADMIN untuk memberikan izin baca
+  @Roles(Role.OWNER, Role.ADMIN)
+  @ApiOperation({ summary: 'Dapatkan semua kategori (OWNER & ADMIN)' })
   @ApiResponse({ status: 200, description: 'List semua kategori berhasil diambil.', type: [CategoryResponseDto] })
   findAll() {
     return this.service.findAll();
   }
 
   @Get(':id')
-  @Roles(Role.OWNER)
-  @ApiOperation({ summary: 'Dapatkan detail satu kategori (OWNER only)' })
+  // PERBAIKAN: Menambahkan Role.ADMIN untuk memberikan izin baca
+  @Roles(Role.OWNER, Role.ADMIN)
+  @ApiOperation({ summary: 'Dapatkan detail satu kategori (OWNER & ADMIN)' })
   @ApiParam({ name: 'id', description: 'ID unik dari kategori', example: 1 })
   @ApiResponse({ status: 200, description: 'Detail kategori berhasil diambil.', type: CategoryResponseDto })
   @ApiNotFoundResponse({ description: 'Kategori dengan ID tersebut tidak ditemukan.' })
