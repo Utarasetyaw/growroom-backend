@@ -2,9 +2,18 @@
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsString, IsInt, IsBoolean, IsOptional, Min, IsNumber, IsJSON } from 'class-validator';
+import {
+    IsString,
+    IsInt,
+    IsBoolean,
+    IsOptional,
+    Min,
+    IsNumber,
+    IsObject, // DIIMPOR: Untuk memvalidasi objek
+    IsArray,  // DIIMPOR: Untuk memvalidasi array
+} from 'class-validator';
 
-// Fungsi bantuan untuk mengubah string JSON menjadi objek
+// Fungsi transformer ini sudah benar, tidak perlu diubah
 const jsonTransformer = Transform(({ value }) => {
   try { return JSON.parse(value); } catch (e) { return value; }
 });
@@ -12,18 +21,18 @@ const jsonTransformer = Transform(({ value }) => {
 export class CreateProductDto {
   @ApiProperty({ description: 'Nama produk (JSON string)', example: '{"en": "Product Name"}' })
   @jsonTransformer
-  @IsJSON({ message: 'Nama produk harus berupa JSON string yang valid.' })
+  @IsObject({ message: 'Nama produk harus berupa objek JSON yang valid.' }) // DIUBAH: dari IsJSON menjadi IsObject
   name: any;
 
   @ApiProperty({ description: 'Varian produk (JSON string)', example: '{"en": "Variegated"}' })
   @jsonTransformer
-  @IsJSON({ message: 'Varian produk harus berupa JSON string yang valid.' })
+  @IsObject({ message: 'Varian produk harus berupa objek JSON yang valid.' }) // DIUBAH
   variant: any;
 
   @ApiPropertyOptional({ description: 'Deskripsi produk (JSON string)' })
   @IsOptional()
   @jsonTransformer
-  @IsJSON({ message: 'Deskripsi produk harus berupa JSON string yang valid.' })
+  @IsObject({ message: 'Deskripsi produk harus berupa objek JSON yang valid.' }) // DIUBAH
   description?: any;
 
   @ApiProperty({ description: 'Jumlah stok produk', example: 100 })
@@ -38,9 +47,9 @@ export class CreateProductDto {
   @IsNumber()
   weight?: number;
   
-  @ApiProperty({ description: 'Detail perawatan (JSON string)' })
+  @ApiProperty({ description: 'Detail perawatan (JSON string)', example: '[{"name":{"en":"Watering"},"value":{"en":"Once a week"}}]' })
   @jsonTransformer
-  @IsJSON({ message: 'Detail perawatan harus berupa JSON string yang valid.' })
+  @IsArray({ message: 'Detail perawatan harus berupa array JSON yang valid.' }) // DIUBAH: dari IsJSON menjadi IsArray
   careDetails: any;
 
   @ApiPropertyOptional({ description: 'Produk unggulan?', default: false, type: 'boolean' })
@@ -60,8 +69,8 @@ export class CreateProductDto {
   @IsInt()
   subCategoryId: number;
 
-  @ApiProperty({ description: 'Harga produk (JSON string)' })
+  @ApiProperty({ description: 'Harga produk (JSON string)', example: '[{"currencyId":1,"price":150000}]' })
   @jsonTransformer
-  @IsJSON({ message: 'Harga produk harus berupa JSON string yang valid.' })
+  @IsArray({ message: 'Harga produk harus berupa array JSON yang valid.' }) // DIUBAH: dari IsJSON menjadi IsArray
   prices: any;
 }
