@@ -16,14 +16,13 @@ export class ShippingZoneService {
           ? { create: dto.prices.map(p => ({ currencyId: p.currencyId, price: p.price })) }
           : undefined,
       },
-      include: { prices: true },
+      include: { 
+        prices: { include: { currency: true } }, 
+        rates: true // Rates akan kosong saat pertama dibuat, jadi 'true' sudah cukup
+      },
     });
   }
 
-  /**
-   * REVISI UTAMA DI FUNGSI INI
-   * Query sekarang menyertakan semua data relasi yang dibutuhkan frontend.
-   */
   async findAll() {
     console.log('Mencoba mengambil data zona pengiriman...'); // Log Awal
 
@@ -55,7 +54,6 @@ export class ShippingZoneService {
   async findOne(id: number) {
     const data = await this.prisma.shippingZone.findUnique({
       where: { id },
-      // Terapkan include yang sama di sini untuk konsistensi
       include: {
         prices: { include: { currency: true } },
         rates: {
@@ -92,7 +90,6 @@ export class ShippingZoneService {
           },
         }),
       },
-      // Terapkan include yang sama di sini juga
       include: {
         prices: { include: { currency: true } },
         rates: {
@@ -125,10 +122,21 @@ export class ShippingZoneService {
     });
   }
 
+  /**
+   * REVISI UTAMA DI FUNGSI INI
+   * Query sekarang menyertakan `prices` dari ShippingZone itu sendiri.
+   */
   async findAllActive() {
     return this.prisma.shippingZone.findMany({
       where: { isActive: true },
       include: {
+        // --- Menyertakan harga di level negara/zona ---
+        prices: {
+          include: {
+            currency: true
+          }
+        },
+        // --- Menyertakan harga di level kota/rate ---
         rates: {
           where: { isActive: true },
           include: {
