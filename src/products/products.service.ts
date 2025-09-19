@@ -10,13 +10,21 @@ export class ProductsService {
   constructor(private prisma: PrismaService) {}
 
   private readonly productInclude = {
-    images: true,
+    images: {
+      orderBy: {
+        id: 'asc' as const,
+      },
+    },
     prices: {
       include: {
         currency: true,
       },
     },
-    subCategory: true,
+    subCategory: {
+      include: {
+        category: true,
+      },
+    },
   };
 
   async findAll() {
@@ -29,19 +37,40 @@ export class ProductsService {
   }
 
   async findOne(id: number) {
-    const product = await this.prisma.product.findUnique({
-      where: { id },
+    const product = await this.prisma.product.findFirst({
+      where: {
+        id: id,
+        isActive: true, // Frontend users can only see active products
+      },
       include: this.productInclude,
     });
+
     if (!product) {
-      throw new NotFoundException(`Product with ID ${id} not found.`);
+      throw new NotFoundException(`Product with ID ${id} not found or is not active.`);
     }
     return product;
   }
 
   async create(createProductDto: any, imageUrls: string[]) {
     const { prices, ...productData } = createProductDto;
-    
+
+    // Konversi tipe data dari string (karena multipart/form-data)
+    if (productData.isBestProduct !== undefined) {
+      productData.isBestProduct = String(productData.isBestProduct).toLowerCase() === 'true';
+    }
+    if (productData.isActive !== undefined) {
+      productData.isActive = String(productData.isActive).toLowerCase() === 'true';
+    }
+    if (productData.stock !== undefined) {
+      productData.stock = parseInt(String(productData.stock), 10);
+    }
+    if (productData.weight !== undefined) {
+      productData.weight = parseFloat(String(productData.weight));
+    }
+    if (productData.subCategoryId !== undefined) {
+      productData.subCategoryId = parseInt(String(productData.subCategoryId), 10);
+    }
+
     return this.prisma.$transaction(async (tx) => {
       const dataToCreate: Prisma.ProductCreateInput = {
         ...productData,
@@ -51,9 +80,13 @@ export class ProductsService {
       };
 
       if (prices && prices.length > 0) {
-        const validPrices = prices.filter(
-          (p: any) => p.currencyId != null && p.price != null,
-        );
+        const validPrices = prices
+          .filter((p: any) => p.currencyId != null && p.price != null)
+          .map((p: any) => ({
+            currencyId: parseInt(String(p.currencyId), 10),
+            price: parseFloat(String(p.price)),
+          }));
+
         if (validPrices.length > 0) {
           dataToCreate.prices = {
             create: validPrices,
@@ -71,6 +104,23 @@ export class ProductsService {
   async update(id: number, updateProductDto: any, newImageUrls: string[]) {
     const { prices, imagesToDelete, ...productData } = updateProductDto;
 
+    // Konversi tipe data dari string (karena multipart/form-data)
+    if (productData.isBestProduct !== undefined) {
+      productData.isBestProduct = String(productData.isBestProduct).toLowerCase() === 'true';
+    }
+    if (productData.isActive !== undefined) {
+      productData.isActive = String(productData.isActive).toLowerCase() === 'true';
+    }
+    if (productData.stock !== undefined) {
+      productData.stock = parseInt(String(productData.stock), 10);
+    }
+    if (productData.weight !== undefined) {
+      productData.weight = parseFloat(String(productData.weight));
+    }
+    if (productData.subCategoryId !== undefined) {
+      productData.subCategoryId = parseInt(String(productData.subCategoryId), 10);
+    }
+
     return this.prisma.$transaction(async (tx) => {
       const product = await tx.product.findUnique({ where: { id } });
       if (!product) {
@@ -84,19 +134,17 @@ export class ProductsService {
         });
       }
 
-      // --- REVISI UTAMA (UPDATE): Logika Hapus Gambar Cerdas ---
       if (imagesToDelete && imagesToDelete.length > 0) {
+        const parsedImagesToDelete = imagesToDelete.map((imgId: any) => parseInt(String(imgId), 10));
         const imagesToDeleteRecords = await tx.productImage.findMany({
-          where: { id: { in: imagesToDelete } },
+          where: { id: { in: parsedImagesToDelete } },
         });
 
         for (const image of imagesToDeleteRecords) {
-          // Periksa apakah URL gambar ini digunakan di orderItem manapun
           const orderItemCount = await tx.orderItem.count({
             where: { productImage: image.url },
           });
 
-          // Hapus file fisik HANYA JIKA tidak ada order yang menggunakannya
           if (orderItemCount === 0) {
             const imagePath = join(process.cwd(), image.url.substring(1));
             if (fs.existsSync(imagePath)) {
@@ -108,10 +156,8 @@ export class ProductsService {
             }
           }
         }
-
-        // Tetap hapus relasi gambar dari produknya, terlepas dari apakah filenya dihapus atau tidak
         await tx.productImage.deleteMany({
-          where: { productId: id, id: { in: imagesToDelete } },
+          where: { productId: id, id: { in: parsedImagesToDelete } },
         });
       }
 
@@ -124,16 +170,17 @@ export class ProductsService {
       if (prices) {
         await tx.productPrice.deleteMany({ where: { productId: id } });
         if (prices.length > 0) {
-          const validPrices = prices.filter(
-            (p) => p.currencyId != null && p.price != null,
-          );
+          const validPrices = prices
+            .filter((p: any) => p.currencyId != null && p.price != null)
+            .map((p: any) => ({
+                productId: id,
+                currencyId: parseInt(String(p.currencyId), 10),
+                price: parseFloat(String(p.price)),
+              }));
+            
           if (validPrices.length > 0) {
             await tx.productPrice.createMany({
-              data: validPrices.map((price) => ({
-                productId: id,
-                currencyId: price.currencyId!,
-                price: price.price!,
-              })),
+              data: validPrices,
             });
           }
         }
@@ -157,15 +204,12 @@ export class ProductsService {
         throw new NotFoundException(`Product with ID ${id} not found.`);
       }
 
-      // --- REVISI UTAMA (REMOVE): Logika Hapus Gambar Cerdas ---
       if (product.images && product.images.length > 0) {
         for (const image of product.images) {
-          // Periksa apakah URL gambar ini digunakan di orderItem manapun
           const orderItemCount = await tx.orderItem.count({
             where: { productImage: image.url },
           });
 
-          // Hapus file fisik HANYA JIKA tidak ada order yang menggunakannya
           if (orderItemCount === 0) {
             const imagePath = join(process.cwd(), image.url.substring(1));
             if (fs.existsSync(imagePath)) {
@@ -179,7 +223,6 @@ export class ProductsService {
         }
       }
 
-      // Setelah file aman, hapus record produk dari database.
       return tx.product.delete({ where: { id } });
     });
   }
@@ -188,6 +231,23 @@ export class ProductsService {
     return this.prisma.product.findMany({
       where: {
         isBestProduct: true,
+        isActive: true,
+      },
+      take: limit,
+      include: this.productInclude,
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+  }
+
+  async findRelatedProducts(currentProductId: number, subCategoryId: number, limit: number) {
+    return this.prisma.product.findMany({
+      where: {
+        subCategoryId: subCategoryId,
+        id: {
+          not: currentProductId,
+        },
         isActive: true,
       },
       take: limit,
@@ -216,7 +276,7 @@ export class ProductsService {
 
     if (search) {
       where.name = {
-        path: ['id'],
+        path: ['id'], // Sesuaikan dengan key JSON Anda, misal 'en' atau 'id'
         string_contains: search,
       };
     }
@@ -231,8 +291,8 @@ export class ProductsService {
 
     if (variant) {
       where.variant = {
-        path: ['id'],
-        equals: variant,
+        path: ['id'], // Sesuaikan dengan key JSON Anda
+        string_contains: variant,
       };
     }
 
@@ -271,15 +331,13 @@ export class ProductsService {
       this.prisma.product.count({ where }),
     ]);
 
-    const totalPages = Math.ceil(total / limit);
-
     return {
       data: products,
       meta: {
         total,
         page,
         limit,
-        totalPages,
+        totalPages: Math.ceil(total / limit),
       },
     };
   }
