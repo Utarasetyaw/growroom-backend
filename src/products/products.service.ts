@@ -107,10 +107,11 @@ export class ProductsService {
     });
   }
 
-  async update(id: number, updateProductDto: any, newImageUrls: string[]) {
+ async update(id: number, updateProductDto: any, newImageUrls: string[]) {
+    // DTO yang diterima di sini sudah di-parsing oleh controller
     const { prices, imagesToDelete, ...productData } = updateProductDto;
 
-    // --- BLOK KONVERSI TIPE DATA (UPDATE) ---
+    // Blok konversi tipe data ini tetap diperlukan
     if (productData.isBestProduct !== undefined) {
       productData.isBestProduct = String(productData.isBestProduct).toLowerCase() === 'true';
     }
@@ -126,11 +127,7 @@ export class ProductsService {
     if (productData.subCategoryId !== undefined) {
       productData.subCategoryId = parseInt(String(productData.subCategoryId), 10);
     }
-    // Parsing JSON string dari field yang relevan
-    if (productData.name) productData.name = JSON.parse(productData.name);
-    if (productData.variant) productData.variant = JSON.parse(productData.variant);
-    if (productData.description) productData.description = JSON.parse(productData.description);
-    if (productData.careDetails) productData.careDetails = JSON.parse(productData.careDetails);
+    // Field JSON sudah di-handle di controller, jadi tidak perlu parse lagi di sini
     
     return this.prisma.$transaction(async (tx) => {
       const product = await tx.product.findUnique({ where: { id } });
@@ -138,11 +135,13 @@ export class ProductsService {
         throw new NotFoundException(`Product with ID ${id} not found.`);
       }
 
+      // Update data produk dasar
       await tx.product.update({
         where: { id },
         data: productData,
       });
 
+      // Logika untuk menghapus gambar (tidak berubah)
       if (imagesToDelete) {
         const parsedImagesToDelete = String(imagesToDelete).split(',').map(imgId => parseInt(imgId, 10));
         const imagesToDeleteRecords = await tx.productImage.findMany({
@@ -170,15 +169,21 @@ export class ProductsService {
         });
       }
 
+      // Logika untuk menambah gambar baru (tidak berubah)
       if (newImageUrls && newImageUrls.length > 0) {
         await tx.productImage.createMany({
           data: newImageUrls.map((url) => ({ url, productId: id })),
         });
       }
 
+      // --- PERBAIKAN UTAMA DI SINI ---
       if (prices) {
+        // Hapus harga lama
         await tx.productPrice.deleteMany({ where: { productId: id } });
-        const parsedPrices = JSON.parse(prices);
+
+        // Langsung gunakan variabel 'prices', tidak perlu parse lagi
+        const parsedPrices = prices; 
+        
         if (parsedPrices && parsedPrices.length > 0) {
           const validPrices = parsedPrices
             .filter((p: any) => p.currencyId != null && p.price != null)
@@ -189,6 +194,7 @@ export class ProductsService {
               }));
             
           if (validPrices.length > 0) {
+            // Buat harga baru
             await tx.productPrice.createMany({
               data: validPrices,
             });
@@ -196,6 +202,7 @@ export class ProductsService {
         }
       }
 
+      // Ambil dan kembalikan data produk yang sudah terupdate
       return tx.product.findUnique({
         where: { id },
         include: this.productInclude,
