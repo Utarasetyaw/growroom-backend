@@ -12,7 +12,7 @@ export class ProductsService {
   private readonly productInclude = {
     images: {
       orderBy: {
-        id: 'asc' as const,
+        id: 'asc',
       },
     },
     prices: {
@@ -25,7 +25,7 @@ export class ProductsService {
         category: true,
       },
     },
-  };
+  } as const;
 
   async findAll() {
     return this.prisma.product.findMany({
@@ -46,7 +46,7 @@ export class ProductsService {
     });
 
     if (!product) {
-      throw new NotFoundException(`Product with ID ${id} not found or is not active.`);
+      throw new NotFoundException(`Product with ID #${id} not found or is not active.`);
     }
     return product;
   }
@@ -54,7 +54,7 @@ export class ProductsService {
   async create(createProductDto: any, imageUrls: string[]) {
     const { prices, ...productData } = createProductDto;
 
-    // Konversi tipe data dari string (karena multipart/form-data)
+    // --- BLOK KONVERSI TIPE DATA (CREATE) ---
     if (productData.isBestProduct !== undefined) {
       productData.isBestProduct = String(productData.isBestProduct).toLowerCase() === 'true';
     }
@@ -65,12 +65,17 @@ export class ProductsService {
       productData.stock = parseInt(String(productData.stock), 10);
     }
     if (productData.weight !== undefined) {
-      productData.weight = parseFloat(String(productData.weight));
+      productData.weight = parseFloat(String(productData.weight)) || null;
     }
     if (productData.subCategoryId !== undefined) {
       productData.subCategoryId = parseInt(String(productData.subCategoryId), 10);
     }
-
+    // Parsing JSON string dari field yang relevan
+    if (productData.name) productData.name = JSON.parse(productData.name);
+    if (productData.variant) productData.variant = JSON.parse(productData.variant);
+    if (productData.description) productData.description = JSON.parse(productData.description);
+    if (productData.careDetails) productData.careDetails = JSON.parse(productData.careDetails);
+    
     return this.prisma.$transaction(async (tx) => {
       const dataToCreate: Prisma.ProductCreateInput = {
         ...productData,
@@ -79,8 +84,9 @@ export class ProductsService {
         },
       };
 
-      if (prices && prices.length > 0) {
-        const validPrices = prices
+      const parsedPrices = prices ? JSON.parse(prices) : [];
+      if (parsedPrices && parsedPrices.length > 0) {
+        const validPrices = parsedPrices
           .filter((p: any) => p.currencyId != null && p.price != null)
           .map((p: any) => ({
             currencyId: parseInt(String(p.currencyId), 10),
@@ -104,7 +110,7 @@ export class ProductsService {
   async update(id: number, updateProductDto: any, newImageUrls: string[]) {
     const { prices, imagesToDelete, ...productData } = updateProductDto;
 
-    // Konversi tipe data dari string (karena multipart/form-data)
+    // --- BLOK KONVERSI TIPE DATA (UPDATE) ---
     if (productData.isBestProduct !== undefined) {
       productData.isBestProduct = String(productData.isBestProduct).toLowerCase() === 'true';
     }
@@ -115,27 +121,30 @@ export class ProductsService {
       productData.stock = parseInt(String(productData.stock), 10);
     }
     if (productData.weight !== undefined) {
-      productData.weight = parseFloat(String(productData.weight));
+      productData.weight = parseFloat(String(productData.weight)) || null;
     }
     if (productData.subCategoryId !== undefined) {
       productData.subCategoryId = parseInt(String(productData.subCategoryId), 10);
     }
-
+    // Parsing JSON string dari field yang relevan
+    if (productData.name) productData.name = JSON.parse(productData.name);
+    if (productData.variant) productData.variant = JSON.parse(productData.variant);
+    if (productData.description) productData.description = JSON.parse(productData.description);
+    if (productData.careDetails) productData.careDetails = JSON.parse(productData.careDetails);
+    
     return this.prisma.$transaction(async (tx) => {
       const product = await tx.product.findUnique({ where: { id } });
       if (!product) {
         throw new NotFoundException(`Product with ID ${id} not found.`);
       }
 
-      if (Object.keys(productData).length > 0) {
-        await tx.product.update({
-          where: { id },
-          data: productData,
-        });
-      }
+      await tx.product.update({
+        where: { id },
+        data: productData,
+      });
 
-      if (imagesToDelete && imagesToDelete.length > 0) {
-        const parsedImagesToDelete = imagesToDelete.map((imgId: any) => parseInt(String(imgId), 10));
+      if (imagesToDelete) {
+        const parsedImagesToDelete = String(imagesToDelete).split(',').map(imgId => parseInt(imgId, 10));
         const imagesToDeleteRecords = await tx.productImage.findMany({
           where: { id: { in: parsedImagesToDelete } },
         });
@@ -146,7 +155,7 @@ export class ProductsService {
           });
 
           if (orderItemCount === 0) {
-            const imagePath = join(process.cwd(), image.url.substring(1));
+            const imagePath = join(process.cwd(), image.url.startsWith('/') ? image.url.substring(1) : image.url);
             if (fs.existsSync(imagePath)) {
               try {
                 fs.unlinkSync(imagePath);
@@ -169,8 +178,9 @@ export class ProductsService {
 
       if (prices) {
         await tx.productPrice.deleteMany({ where: { productId: id } });
-        if (prices.length > 0) {
-          const validPrices = prices
+        const parsedPrices = JSON.parse(prices);
+        if (parsedPrices && parsedPrices.length > 0) {
+          const validPrices = parsedPrices
             .filter((p: any) => p.currencyId != null && p.price != null)
             .map((p: any) => ({
                 productId: id,
@@ -211,7 +221,7 @@ export class ProductsService {
           });
 
           if (orderItemCount === 0) {
-            const imagePath = join(process.cwd(), image.url.substring(1));
+            const imagePath = join(process.cwd(), image.url.startsWith('/') ? image.url.substring(1) : image.url);
             if (fs.existsSync(imagePath)) {
               try {
                 fs.unlinkSync(imagePath);
@@ -276,7 +286,7 @@ export class ProductsService {
 
     if (search) {
       where.name = {
-        path: ['id'], // Sesuaikan dengan key JSON Anda, misal 'en' atau 'id'
+        path: ['en'], // Sesuaikan dengan key JSON Anda, misal 'en' atau 'id'
         string_contains: search,
       };
     }
@@ -291,7 +301,7 @@ export class ProductsService {
 
     if (variant) {
       where.variant = {
-        path: ['id'], // Sesuaikan dengan key JSON Anda
+        path: ['en'], // Sesuaikan dengan key JSON Anda
         string_contains: variant,
       };
     }
