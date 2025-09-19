@@ -42,12 +42,18 @@ export class ProductsController {
 
   @Get()
   @Roles(Role.OWNER, Role.ADMIN)
+  @ApiOperation({ summary: 'List semua produk (Admin/Owner Only)' })
+  @ApiResponse({ status: 200, description: 'List produk berhasil diambil.', type: [ProductResponseDto] })
   findAll() {
     return this.productsService.findAll();
   }
 
   @Get(':id')
   @Roles(Role.OWNER, Role.ADMIN)
+  @ApiOperation({ summary: 'Lihat detail satu produk (Admin/Owner Only)' })
+  @ApiParam({ name: 'id', description: 'ID unik dari produk', example: 1 })
+  @ApiResponse({ status: 200, description: 'Detail produk berhasil diambil.', type: ProductResponseDto })
+  @ApiNotFoundResponse({ description: 'Produk dengan ID tersebut tidak ditemukan.' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.productsService.findOne(id);
   }
@@ -70,34 +76,17 @@ export class ProductsController {
     @Body() createProductDto: CreateProductDto,
   ) {
     const imageUrls = files ? files.map(file => `/uploads/products/${file.filename}`) : [];
-    
-    try {
-      // Buat objek baru untuk menampung data yang sudah bersih dan dikonversi
-      const cleanedDto: any = {};
-
-      // Konversi semua field dari string ke tipe data yang benar
-      cleanedDto.name = JSON.parse(createProductDto.name);
-      cleanedDto.variant = JSON.parse(createProductDto.variant);
-      cleanedDto.description = createProductDto.description ? JSON.parse(createProductDto.description) : undefined;
-      cleanedDto.careDetails = JSON.parse(createProductDto.careDetails);
-      cleanedDto.prices = JSON.parse(createProductDto.prices);
-      cleanedDto.stock = parseInt(createProductDto.stock as any, 10);
-      cleanedDto.subCategoryId = parseInt(createProductDto.subCategoryId as any, 10);
-      cleanedDto.weight = createProductDto.weight ? parseFloat(createProductDto.weight as any) : null;
-      cleanedDto.isActive = String(createProductDto.isActive).toLowerCase() === 'true';
-      cleanedDto.isBestProduct = String(createProductDto.isBestProduct).toLowerCase() === 'true';
-
-      return this.productsService.create(cleanedDto, imageUrls);
-    } catch (error) {
-      console.error('Error parsing create DTO:', error);
-      throw new BadRequestException('Format data tidak valid. Pastikan semua field terisi dengan benar.');
-    }
+    // Langsung teruskan DTO mentah ke service, konversi data akan ditangani di sana.
+    return this.productsService.create(createProductDto, imageUrls);
   }
 
   @Patch(':id')
   @Roles(Role.OWNER, Role.ADMIN)
   @ApiOperation({ summary: 'Update produk (Admin/Owner Only)' })
   @ApiConsumes('multipart/form-data')
+  @ApiParam({ name: 'id', description: 'ID dari produk yang akan di-update', example: 1 })
+  @ApiResponse({ status: 200, description: 'Produk berhasil diupdate.', type: ProductResponseDto })
+  @ApiNotFoundResponse({ description: 'Produk dengan ID tersebut tidak ditemukan.' })
   @UseInterceptors(FilesInterceptor('newImages', 10, {
     storage: diskStorage({
       destination: './uploads/products',
@@ -113,33 +102,16 @@ export class ProductsController {
     @UploadedFiles() files?: Array<Express.Multer.File>,
   ) {
     const newImageUrls = files ? files.map(file => `/uploads/products/${file.filename}`) : [];
-
-    try {
-      // Buat objek baru untuk menampung data yang sudah bersih dan dikonversi
-      const cleanedDto: any = { ...updateProductDto };
-
-      // Konversi semua field yang dikirim dari string ke tipe data yang benar
-      // Kita cek keberadaan setiap field karena ini adalah operasi PATCH (parsial)
-      if (cleanedDto.name) cleanedDto.name = JSON.parse(cleanedDto.name as string);
-      if (cleanedDto.variant) cleanedDto.variant = JSON.parse(cleanedDto.variant as string);
-      if (cleanedDto.description) cleanedDto.description = JSON.parse(cleanedDto.description as string);
-      if (cleanedDto.careDetails) cleanedDto.careDetails = JSON.parse(cleanedDto.careDetails as string);
-      if (cleanedDto.prices) cleanedDto.prices = JSON.parse(cleanedDto.prices as string);
-      if (cleanedDto.stock) cleanedDto.stock = parseInt(cleanedDto.stock as any, 10);
-      if (cleanedDto.subCategoryId) cleanedDto.subCategoryId = parseInt(cleanedDto.subCategoryId as any, 10);
-      if (cleanedDto.weight) cleanedDto.weight = parseFloat(cleanedDto.weight as any);
-      if (cleanedDto.isActive !== undefined) cleanedDto.isActive = String(cleanedDto.isActive).toLowerCase() === 'true';
-      if (cleanedDto.isBestProduct !== undefined) cleanedDto.isBestProduct = String(cleanedDto.isBestProduct).toLowerCase() === 'true';
-      
-      return this.productsService.update(id, cleanedDto, newImageUrls);
-    } catch (error) {
-      console.error('Error parsing update DTO:', error);
-      throw new BadRequestException('Format data tidak valid pada salah satu field yang diupdate.');
-    }
+    // Langsung teruskan DTO mentah ke service, konversi data akan ditangani di sana.
+    return this.productsService.update(id, updateProductDto, newImageUrls);
   }
 
   @Delete(':id')
   @Roles(Role.OWNER, Role.ADMIN)
+  @ApiOperation({ summary: 'Hapus produk (Admin/Owner Only)' })
+  @ApiParam({ name: 'id', description: 'ID dari produk yang akan dihapus', example: 1 })
+  @ApiResponse({ status: 200, description: 'Produk berhasil dihapus.' })
+  @ApiNotFoundResponse({ description: 'Produk dengan ID tersebut tidak ditemukan.' })
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.productsService.remove(id);
   }
