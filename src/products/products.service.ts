@@ -50,13 +50,20 @@ export class ProductsService {
           create: prices?.map((p: any) => ({ currencyId: p.currencyId, price: p.price })) || [],
         },
       };
+      // Remove subCategoryId from productData to avoid unknown property error
+      delete (dataToCreate as any).subCategoryId;
 
       return tx.product.create({ data: dataToCreate, include: this.productInclude });
     });
   }
 
-  // Fungsi update Anda sudah benar. Tidak ada perubahan.
+  // --- FUNGSI UPDATE DENGAN LOG UNTUK DEBUGGING ---
   async update(id: number, updateProductDto: UpdateProductDto, newImageUrls: string[]) {
+    // ---> LOG UNTUK DEBUGGING DITAMBAHKAN DI SINI <---
+    console.log('--- UPDATE PRODUCT DTO RECEIVED ---');
+    console.log(updateProductDto);
+    console.log('-----------------------------------');
+
     const { prices, imagesToDelete, ...productData } = updateProductDto;
 
     if (productData.isActive === undefined) {
@@ -269,8 +276,6 @@ export class ProductsService {
       }),
       this.prisma.product.count({ where }),
     ]);
-
-
 
     return {
       data: products,
