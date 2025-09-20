@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { DiscountType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { GetProductsQueryDto } from '../user_frontend/dto/get-products-query.dto';
 import * as fs from 'fs';
@@ -25,6 +25,17 @@ export class ProductsService {
     subCategory: {
       include: {
         category: true,
+      },
+    },
+    discounts: {
+      where: {
+        type: DiscountType.SALE,
+        isActive: true,
+        startDate: { lte: new Date() },
+        endDate: { gte: new Date() },
+      },
+      orderBy: {
+        createdAt: 'desc',
       },
     },
   } as const;
