@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateDiscountDto } from './dto/create-discount.dto';
 import { UpdateDiscountDto } from './dto/update-discount.dto';
@@ -9,6 +9,47 @@ import * as crypto from 'crypto';
 export class DiscountsService {
   constructor(private prisma: PrismaService) {}
 
+  private async checkForSaleOverlaps(
+    productIds: number[],
+    startDate: Date,
+    endDate: Date,
+    discountIdToExclude?: number,
+  ) {
+    const whereClause: any = {
+      type: DiscountType.SALE,
+      startDate: { lte: endDate },
+      endDate: { gte: startDate },
+    };
+
+    if (discountIdToExclude) {
+      whereClause.id = { not: discountIdToExclude };
+    }
+
+    const conflictingProduct = await this.prisma.product.findFirst({
+      where: {
+        id: { in: productIds },
+        discounts: {
+          some: whereClause,
+        },
+      },
+      include: {
+        discounts: {
+            where: whereClause,
+            select: { name: true } // Hanya include nama diskon
+        }
+      }
+    });
+
+    if (conflictingProduct) {
+      // --- REVISI DI SINI: Gunakan optional chaining (?.) dan fallback text ---
+      const productName = (conflictingProduct.name as any)?.en || 'produk yang dipilih';
+      const conflictingDiscountName = conflictingProduct.discounts[0]?.name || 'lain';
+      throw new BadRequestException(
+        `Produk "${productName}" sudah dalam diskon "${conflictingDiscountName}". Silakan edit promo yang sudah ada atau pilih produk lain.`,
+      );
+    }
+  }
+
   async create(createDiscountDto: CreateDiscountDto) {
     const {
       productIds,
@@ -18,8 +59,15 @@ export class DiscountsService {
       ...discountData
     } = createDiscountDto;
 
+    if (discountData.type === DiscountType.SALE) {
+      await this.checkForSaleOverlaps(
+        productIds,
+        discountData.startDate,
+        discountData.endDate,
+      );
+    }
+
     return this.prisma.$transaction(async (tx) => {
-      // 1. Buat data diskon utama dan hubungkan dengan produk
       const discount = await tx.discount.create({
         data: {
           ...discountData,
@@ -29,26 +77,26 @@ export class DiscountsService {
         },
       });
 
-      // 2. Jika tipenya VOUCHER, generate kode voucher unik
-      if (discount.type === DiscountType.VOUCHER) {
-        const vouchersToCreate: { code: string; maxUses: number | null; discountId: number }[] = [];
-        for (let i = 0; i < (voucherQuantity ?? 0); i++) {
-          // Generate kode unik: PREFIX-XXXXXX
+      if (discount.type === DiscountType.VOUCHER && voucherQuantity) {
+        const vouchersToCreate: { code: string; maxUses?: number; discountId: number }[] = [];
+        for (let i = 0; i < voucherQuantity; i++) {
           const randomPart = crypto.randomBytes(3).toString('hex').toUpperCase();
           const code = `${voucherCodePrefix || 'VCR'}-${randomPart}`;
           
           vouchersToCreate.push({
             code,
-            maxUses: voucherMaxUses ?? null,
+            // --- REVISI KECIL: Langsung teruskan `voucherMaxUses` (undefined diterima oleh Prisma) ---
+            maxUses: voucherMaxUses,
             discountId: discount.id,
           });
         }
-        await tx.voucher.createMany({
-          data: vouchersToCreate,
-        });
+        if (vouchersToCreate.length > 0) {
+            await tx.voucher.createMany({
+                data: vouchersToCreate,
+            });
+        }
       }
 
-      // 3. Ambil kembali data lengkap untuk dikembalikan
       return tx.discount.findUnique({
         where: { id: discount.id },
         include: { products: true, vouchers: true },
@@ -77,6 +125,24 @@ export class DiscountsService {
   async update(id: number, updateDiscountDto: UpdateDiscountDto) {
     const { productIds, ...discountData } = updateDiscountDto;
 
+    if (discountData.type === DiscountType.SALE || (productIds && discountData.type === undefined)) {
+      const existingDiscount = await this.prisma.discount.findUnique({ where: { id }, include: { products: { select: { id: true }} } });
+      if (existingDiscount) {
+        const checkProductIds = productIds || existingDiscount.products.map(p => p.id);
+        const checkStartDate = discountData.startDate || existingDiscount.startDate;
+        const checkEndDate = discountData.endDate || existingDiscount.endDate;
+        
+        if(checkProductIds.length > 0) {
+            await this.checkForSaleOverlaps(
+                checkProductIds,
+                checkStartDate,
+                checkEndDate,
+                id, 
+            );
+        }
+      }
+    }
+
     const updatedDiscount = await this.prisma.discount.update({
       where: { id },
       data: {
@@ -91,12 +157,10 @@ export class DiscountsService {
   }
 
   async remove(id: number) {
-     // Hapus dulu semua voucher yang terhubung untuk menghindari error relasi
     await this.prisma.voucher.deleteMany({
       where: { discountId: id },
     });
     
-    // Baru hapus diskonnya
     return this.prisma.discount.delete({
       where: { id },
     });
