@@ -1,5 +1,3 @@
-// File: src/products/products.service.ts
-
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -31,18 +29,12 @@ export class ProductsService {
     },
   } as const;
 
-  // --- FUNGSI CREATE YANG DISEDERHANAKAN ---
   async create(createProductDto: CreateProductDto, imageUrls: string[]) {
-    const { prices, ...productData } = createProductDto;
+    const { prices, ...productData } = createProductDto as any; // Cast to any to handle mixed types
     
     return this.prisma.$transaction(async (tx) => {
-      // Cara yang lebih direct: Langsung sertakan subCategoryId dalam data utama.
-      // Prisma akan secara otomatis membuat relasinya.
       const dataToCreate: Prisma.ProductCreateInput = {
         ...productData,
-        subCategory: {
-          connect: { id: productData.subCategoryId },
-        },
         images: {
           create: imageUrls.map((url) => ({ url })),
         },
@@ -50,28 +42,18 @@ export class ProductsService {
           create: prices?.map((p: any) => ({ currencyId: p.currencyId, price: p.price })) || [],
         },
       };
-      // Remove subCategoryId from productData to avoid unknown property error
-      delete (dataToCreate as any).subCategoryId;
 
       return tx.product.create({ data: dataToCreate, include: this.productInclude });
     });
   }
 
-  // --- FUNGSI UPDATE DENGAN LOG UNTUK DEBUGGING ---
   async update(id: number, updateProductDto: UpdateProductDto, newImageUrls: string[]) {
-    // ---> LOG UNTUK DEBUGGING DITAMBAHKAN DI SINI <---
+    // Log ini akan membuktikan bahwa data yang masuk sudah benar (boolean)
     console.log('--- UPDATE PRODUCT DTO RECEIVED ---');
     console.log(updateProductDto);
     console.log('-----------------------------------');
 
-    const { prices, imagesToDelete, ...productData } = updateProductDto;
-
-    if (productData.isActive === undefined) {
-      delete productData.isActive;
-    }
-    if (productData.isBestProduct === undefined) {
-      delete productData.isBestProduct;
-    }
+    const { prices, imagesToDelete, ...productData } = updateProductDto as any; // Cast to any to handle mixed types
 
     return this.prisma.$transaction(async (tx) => {
       const product = await tx.product.findUnique({ where: { id } });
@@ -125,7 +107,6 @@ export class ProductsService {
     });
   }
 
-  // Sisa file tidak perlu diubah...
   async findAll() {
     return this.prisma.product.findMany({
       include: this.productInclude,

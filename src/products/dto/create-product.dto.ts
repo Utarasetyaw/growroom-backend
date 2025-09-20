@@ -24,17 +24,6 @@ const jsonTransformer = Transform(({ value }) => {
   return value;
 });
 
-// Transformer yang lebih kuat untuk menangani nilai boolean dari form
-const booleanTransformer = Transform(({ value }) => {
-  if (value === 'true' || value === true) {
-    return true;
-  }
-  if (value === 'false' || value === false) {
-    return false;
-  }
-  return value;
-});
-
 export class CreateProductDto {
   @ApiProperty({ description: 'Nama produk (JSON string)', example: '{"en": "Product Name"}' })
   @jsonTransformer
@@ -70,17 +59,19 @@ export class CreateProductDto {
   @IsArray({ message: 'Detail perawatan harus berupa array JSON yang valid.' })
   careDetails: any;
 
-  @ApiPropertyOptional({ description: 'Produk unggulan?', default: false, type: 'boolean' })
+  // --- REVISI UTAMA ---
+  // Menerima input sebagai string untuk menghindari bug transformasi
+  @ApiPropertyOptional({ description: 'Produk unggulan?', default: false, type: 'string', example: 'false' })
   @IsOptional()
-  @booleanTransformer
-  @IsBoolean()
-  isBestProduct?: boolean;
+  @IsString()
+  isBestProduct?: string;
 
-  @ApiPropertyOptional({ description: 'Produk aktif?', default: true, type: 'boolean' })
+  // --- REVISI UTAMA ---
+  // Menerima input sebagai string untuk menghindari bug transformasi
+  @ApiPropertyOptional({ description: 'Produk aktif?', default: true, type: 'string', example: 'true' })
   @IsOptional()
-  @booleanTransformer
-  @IsBoolean()
-  isActive?: boolean;
+  @IsString()
+  isActive?: string;
   
   @ApiProperty({ description: 'ID sub-kategori', example: 1 })
   @Transform(({ value }) => parseInt(value, 10))

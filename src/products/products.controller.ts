@@ -50,6 +50,16 @@ export class ProductsController {
     @Body(new ValidationPipe({ transform: true, whitelist: true })) createProductDto: CreateProductDto,
   ) {
     const imageUrls = files ? files.map(file => `/uploads/products/${file.filename}`) : [];
+
+    // --- REVISI: Konversi manual string ke boolean ---
+    if (createProductDto.isActive !== undefined) {
+      (createProductDto as any).isActive = (createProductDto.isActive === 'true');
+    }
+    if (createProductDto.isBestProduct !== undefined) {
+      (createProductDto as any).isBestProduct = (createProductDto.isBestProduct === 'true');
+    }
+    // ----------------------------------------------------
+
     return this.productsService.create(createProductDto, imageUrls);
   }
 
@@ -71,6 +81,16 @@ export class ProductsController {
     @UploadedFiles() files?: Array<Express.Multer.File>,
   ) {
     const newImageUrls = files ? files.map(file => `/uploads/products/${file.filename}`) : [];
+
+    // --- REVISI: Konversi manual string ke boolean ---
+    if (updateProductDto.isActive !== undefined) {
+      (updateProductDto as any).isActive = (updateProductDto.isActive === 'true');
+    }
+    if (updateProductDto.isBestProduct !== undefined) {
+      (updateProductDto as any).isBestProduct = (updateProductDto.isBestProduct === 'true');
+    }
+    // ----------------------------------------------------
+    
     return this.productsService.update(id, updateProductDto, newImageUrls);
   }
 
