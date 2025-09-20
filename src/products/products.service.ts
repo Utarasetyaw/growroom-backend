@@ -30,7 +30,7 @@ export class ProductsService {
   } as const;
 
   async create(createProductDto: CreateProductDto, imageUrls: string[]) {
-    const { prices, ...productData } = createProductDto as any; // Cast to any to handle mixed types
+    const { prices, ...productData } = createProductDto as any;
     
     return this.prisma.$transaction(async (tx) => {
       const dataToCreate: Prisma.ProductCreateInput = {
@@ -48,12 +48,11 @@ export class ProductsService {
   }
 
   async update(id: number, updateProductDto: UpdateProductDto, newImageUrls: string[]) {
-    // Log ini akan membuktikan bahwa data yang masuk sudah benar (boolean)
     console.log('--- UPDATE PRODUCT DTO RECEIVED ---');
     console.log(updateProductDto);
     console.log('-----------------------------------');
 
-    const { prices, imagesToDelete, ...productData } = updateProductDto as any; // Cast to any to handle mixed types
+    const { prices, imagesToDelete, ...productData } = updateProductDto as any;
 
     return this.prisma.$transaction(async (tx) => {
       const product = await tx.product.findUnique({ where: { id } });
@@ -117,14 +116,27 @@ export class ProductsService {
   }
 
   async findOne(id: number) {
-    const product = await this.prisma.product.findFirst({
-      where: {
-        id: id,
-      },
+    const product = await this.prisma.product.findUnique({
+      where: { id },
       include: this.productInclude,
     });
     if (!product) {
       throw new NotFoundException(`Product with ID #${id} not found.`);
+    }
+    return product;
+  }
+  
+  async findOnePublic(id: number) {
+    const product = await this.prisma.product.findFirst({
+      where: {
+        id: id,
+        isActive: true,
+      },
+      include: this.productInclude,
+    });
+
+    if (!product) {
+      throw new NotFoundException(`Product not found or has been archived.`);
     }
     return product;
   }

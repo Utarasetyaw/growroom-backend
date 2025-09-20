@@ -85,4 +85,28 @@ export class GeneralsettingService {
       },
     });
   }
+
+  /**
+   * --- FUNGSI BARU YANG DITAMBAHKAN ---
+   * Mengambil data spesifik dan aman untuk halaman "About".
+   */
+  async findForAboutPage() {
+    return this.prisma.generalSetting.findUnique({
+      where: { id: 1 },
+      select: {
+        shopName: true,
+        shopDescription: true,
+        logoUrl: true,
+        faviconUrl: true,
+        bannerImageUrl: true,
+        bannerVideoUrl: true,
+        address: true,
+        email: true,
+        phoneNumber: true,
+        socialMedia: true,
+        aboutItems: true,
+        faqs: true,
+      },
+    });
+  }
 }

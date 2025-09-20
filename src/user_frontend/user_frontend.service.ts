@@ -29,9 +29,6 @@ export class UserFrontendService {
     private readonly currenciesService: CurrenciesService,
   ) {}
 
-  /**
-   * Mengambil data untuk halaman utama (homepage).
-   */
   async getHomepageData() {
     const [categories, bestProducts, testimonials, generalSettings] =
       await Promise.all([
@@ -49,9 +46,6 @@ export class UserFrontendService {
     };
   }
 
-  /**
-   * Mengambil data untuk halaman "Semua Produk" dengan paginasi dan filter.
-   */
   async getProductsPageData(query: GetProductsQueryDto) {
     const [categories, subCategories, paginatedProducts] = await Promise.all([
       this.categoriesService.findAll(),
@@ -66,19 +60,9 @@ export class UserFrontendService {
     };
   }
 
-  /**
-   * Mengambil data untuk halaman detail produk.
-   * @param id ID dari produk yang ingin ditampilkan.
-   */
   async getProductDetailPageData(id: number) {
-    const [productDetail, bestProducts] = await Promise.all([
-      this.productsService.findOne(id),
-      this.productsService.findBestProducts(8),
-    ]);
-
-    if (!productDetail) {
-      throw new NotFoundException(`Product with ID #${id} not found.`);
-    }
+    const productDetail = await this.productsService.findOnePublic(id);
+    const bestProducts = await this.productsService.findBestProducts(8);
 
     return {
       productDetail,
@@ -86,17 +70,10 @@ export class UserFrontendService {
     };
   }
 
-  /**
-   * Mengambil data untuk halaman "About".
-   */
   async getAboutPageData() {
-    return this.generalsettingService.findOne();
+    return this.generalsettingService.findForAboutPage();
   }
 
-  /**
-   * Mengambil data untuk komponen layout (Nav & Footer),
-   * termasuk bahasa dan mata uang yang aktif.
-   */
   async getNavAndFooterData() {
     const [layoutSettings, activeLanguages, activeCurrencies] =
       await Promise.all([
@@ -112,27 +89,14 @@ export class UserFrontendService {
     };
   }
 
-  /**
-   * Mengambil data profil user yang sedang login.
-   * @param userId ID user dari token JWT.
-   */
   async getMyProfile(userId: number) {
     return this.usersService.findMe(userId);
   }
 
-  /**
-   * Mengupdate data profil user yang sedang login.
-   * @param userId ID user dari token JWT.
-   * @param dto Data baru untuk diupdate.
-   */
   async updateMyProfile(userId: number, dto: UpdateMyProfileDto) {
     return this.usersService.updateMe(userId, dto);
   }
 
-  /**
-   * Mengambil semua data yang dibutuhkan untuk halaman checkout.
-   * @param userId ID user dari token JWT.
-   */
   async getCheckoutPageData(userId: number) {
     const [cart, userProfile, shippingMethods, paymentMethods] = await Promise.all([
       this.cartService.getCart(userId),
