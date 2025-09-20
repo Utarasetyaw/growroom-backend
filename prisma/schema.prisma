@@ -285,6 +285,7 @@ model GeneralSetting {
   socialMedia      Json     @default("{}")
   aboutItems       Json?    @default("[]")
   faqs             Json?    @default("[]")
+  shippingPolicy     Json?    @default("[]")
   telegramBotToken String?
   telegramChatId   String?
   shippingMode     String   @default("manual")
