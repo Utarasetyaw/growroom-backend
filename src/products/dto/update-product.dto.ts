@@ -1,5 +1,3 @@
-// File: src/products/dto/update-product.dto.ts
-
 import { ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { IsArray, IsInt, IsOptional } from 'class-validator';
 import { Transform } from 'class-transformer';

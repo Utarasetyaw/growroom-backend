@@ -31,36 +31,34 @@ export class ProductsService {
     },
   } as const;
 
+  // --- FUNGSI CREATE YANG DISEDERHANAKAN ---
   async create(createProductDto: CreateProductDto, imageUrls: string[]) {
     const { prices, ...productData } = createProductDto;
     
     return this.prisma.$transaction(async (tx) => {
+      // Cara yang lebih direct: Langsung sertakan subCategoryId dalam data utama.
+      // Prisma akan secara otomatis membuat relasinya.
       const dataToCreate: Prisma.ProductCreateInput = {
         ...productData,
-        images: { create: imageUrls.map((url) => ({ url })) },
-        subCategory: { connect: { id: productData.subCategoryId } },
+        subCategory: {
+          connect: { id: productData.subCategoryId },
+        },
+        images: {
+          create: imageUrls.map((url) => ({ url })),
+        },
+        prices: {
+          create: prices?.map((p: any) => ({ currencyId: p.currencyId, price: p.price })) || [],
+        },
       };
-      // Remove subCategoryId from productData to avoid unknown property error
-      delete (dataToCreate as any).subCategoryId;
-      if (prices && Array.isArray(prices) && prices.length > 0) {
-        dataToCreate.prices = {
-          create: prices.map((p: any) => ({ currencyId: p.currencyId, price: p.price })),
-        };
-      }
+
       return tx.product.create({ data: dataToCreate, include: this.productInclude });
     });
   }
 
-  // --- KODE YANG DIPERBAIKI ---
+  // Fungsi update Anda sudah benar. Tidak ada perubahan.
   async update(id: number, updateProductDto: UpdateProductDto, newImageUrls: string[]) {
-    // Tips: Log ini sangat membantu untuk melihat data yang sampai ke service
-    // console.log('DTO received in service:', updateProductDto);
-
     const { prices, imagesToDelete, ...productData } = updateProductDto;
 
-    // Logika ini memastikan bahwa properti boolean yang tidak didefinisikan 
-    // akan dihapus dari objek, sehingga Prisma tidak mencoba mengaturnya ke null.
-    // Ini adalah praktik yang aman, meskipun DTO Anda sudah seharusnya menanganinya.
     if (productData.isActive === undefined) {
       delete productData.isActive;
     }
@@ -69,19 +67,16 @@ export class ProductsService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      // 1. Validasi keberadaan produk
       const product = await tx.product.findUnique({ where: { id } });
       if (!product) {
         throw new NotFoundException(`Product with ID #${id} not found.`);
       }
 
-      // 2. Update data utama produk (teks, angka, boolean)
       await tx.product.update({
         where: { id },
         data: productData,
       });
 
-      // 3. Proses penghapusan gambar
       if (imagesToDelete && imagesToDelete.length > 0) {
         const imagesToDeleteRecords = await tx.productImage.findMany({ where: { id: { in: imagesToDelete } } });
         for (const image of imagesToDeleteRecords) {
@@ -97,14 +92,12 @@ export class ProductsService {
         await tx.productImage.deleteMany({ where: { productId: id, id: { in: imagesToDelete } } });
       }
 
-      // 4. Proses penambahan gambar baru
       if (newImageUrls && newImageUrls.length > 0) {
         await tx.productImage.createMany({
           data: newImageUrls.map((url) => ({ url, productId: id })),
         });
       }
 
-      // 5. Proses update harga (dengan strategi hapus-dan-buat-ulang)
       if (prices) {
         await tx.productPrice.deleteMany({ where: { productId: id } });
         if (Array.isArray(prices) && prices.length > 0) {
@@ -118,7 +111,6 @@ export class ProductsService {
         }
       }
       
-      // 6. Ambil data final yang sudah terupdate untuk dikembalikan sebagai respons
       return tx.product.findUnique({
         where: { id },
         include: this.productInclude,
@@ -126,6 +118,7 @@ export class ProductsService {
     });
   }
 
+  // Sisa file tidak perlu diubah...
   async findAll() {
     return this.prisma.product.findMany({
       include: this.productInclude,
@@ -138,11 +131,7 @@ export class ProductsService {
   async findOne(id: number) {
     const product = await this.prisma.product.findFirst({
       where: {
-        // Pada admin panel, kita mungkin ingin melihat produk yang tidak aktif juga
-        // Jika endpoint ini hanya untuk admin, baris 'isActive' bisa dihapus.
-        // Jika untuk user, biarkan seperti ini.
         id: id,
-        // isActive: true, 
       },
       include: this.productInclude,
     });
@@ -280,6 +269,8 @@ export class ProductsService {
       }),
       this.prisma.product.count({ where }),
     ]);
+
+
 
     return {
       data: products,

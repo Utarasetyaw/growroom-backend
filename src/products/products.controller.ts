@@ -1,5 +1,3 @@
-// File: src/products/products.controller.ts
-
 import {
   Controller, Get, Post, Patch, Delete, Param, Body,
   ParseIntPipe, UseGuards, UseInterceptors, UploadedFiles, ValidationPipe,
