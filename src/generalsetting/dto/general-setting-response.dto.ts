@@ -1,9 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-/**
- * DTO untuk mendefinisikan struktur item Visi, Misi, & Nilai.
- * Menggunakan 'any' untuk title dan description agar mendukung format multi-bahasa.
- */
 class AboutItemDto {
   @ApiProperty({
     description: 'Judul item dalam berbagai bahasa.',
@@ -18,10 +14,6 @@ class AboutItemDto {
   description: any;
 }
 
-/**
- * DTO untuk mendefinisikan struktur item FAQ (Pertanyaan & Jawaban).
- * Menggunakan 'any' untuk mendukung format multi-bahasa.
- */
 class FaqDto {
   @ApiProperty({
     description: 'Pertanyaan dalam berbagai bahasa.',
@@ -36,9 +28,20 @@ class FaqDto {
   answer: any;
 }
 
-/**
- * DTO utama untuk respons endpoint Pengaturan Umum.
- */
+class ShippingPolicyItemDto {
+  @ApiProperty({
+    description: 'Judul kebijakan dalam berbagai bahasa.',
+    example: { en: 'Standard Shipping', id: 'Pengiriman Standar' },
+  })
+  title: any;
+
+  @ApiProperty({
+    description: 'Deskripsi kebijakan dalam berbagai bahasa.',
+    example: { en: 'Estimate 3-5 business days...', id: 'Estimasi 3-5 hari kerja...' },
+  })
+  description: any;
+}
+
 export class GeneralSettingResponseDto {
   @ApiProperty()
   id: number;
@@ -107,6 +110,12 @@ export class GeneralSettingResponseDto {
     type: [FaqDto],
   })
   faqs: FaqDto[];
+
+  @ApiPropertyOptional({
+    description: 'Array objek untuk Kebijakan Pengiriman.',
+    type: [ShippingPolicyItemDto],
+  })
+  shippingPolicy: ShippingPolicyItemDto[];
 
   @ApiProperty({ nullable: true })
   telegramBotToken: string | null;

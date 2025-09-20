@@ -1,4 +1,3 @@
-// src/generalsetting/generalsetting.controller.ts
 import {
   Controller, Get, Patch, Body, UseGuards,
   UseInterceptors, UploadedFiles, BadRequestException,
@@ -11,25 +10,19 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '@prisma/client';
 import { GeneralsettingService } from './generalsetting.service';
-// Pastikan 'extname' diimpor dari 'path'
 import { extname } from 'path';
 import { UpdateGeneralsettingDto } from './dto/update-generalsetting.dto';
 import { GeneralSettingResponseDto } from './dto/general-setting-response.dto';
 import { UpdateShippingModeDto } from './dto/update-shipping-mode.dto';
-import { Public } from '../auth/decorators/public.decorator';
 
-// Definisikan batas ukuran file dalam bytes
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
 const MAX_VIDEO_SIZE_BYTES = 30 * 1024 * 1024; // 30 MB
 
-// Buat fungsi fileFilter untuk validasi ukuran dan format
 const fileFilter = (req, file, callback) => {
   const fieldname = file.fieldname;
   const fileSize = file.size;
-  // Ambil ekstensi file dan ubah ke huruf kecil untuk konsistensi
   const fileExtension = extname(file.originalname).toLowerCase();
 
-  // --- REVISI: Tambahkan validasi format .ico untuk favicon ---
   if (fieldname === 'faviconUrl' && fileExtension !== '.ico') {
     return callback(
       new BadRequestException('Format favicon harus .ico.'),
@@ -37,7 +30,6 @@ const fileFilter = (req, file, callback) => {
     );
   }
 
-  // Cek ukuran untuk file gambar (logo, favicon, banner)
   if (['logoUrl', 'faviconUrl', 'bannerImageUrl'].includes(fieldname)) {
     if (fileSize > MAX_IMAGE_SIZE_BYTES) {
       return callback(
@@ -46,7 +38,6 @@ const fileFilter = (req, file, callback) => {
       );
     }
   }
-  // Cek ukuran untuk file video (banner video)
   else if (fieldname === 'bannerVideoUrl') {
     if (fileSize > MAX_VIDEO_SIZE_BYTES) {
       return callback(
@@ -56,10 +47,8 @@ const fileFilter = (req, file, callback) => {
     }
   }
 
-  // Terima file jika lolos semua validasi
   callback(null, true);
 };
-
 
 @ApiTags('General Settings')
 @Controller('generalsettings')
@@ -118,7 +107,7 @@ export class GeneralsettingController {
 
     const data = { ...body, ...fileMap };
 
-    ['shopName', 'shopDescription', 'socialMedia', 'aboutItems', 'faqs'].forEach(field => {
+    ['shopName', 'shopDescription', 'socialMedia', 'aboutItems', 'faqs', 'shippingPolicy'].forEach(field => {
       if (typeof data[field] === 'string') {
         try { 
           data[field] = JSON.parse(data[field]); 

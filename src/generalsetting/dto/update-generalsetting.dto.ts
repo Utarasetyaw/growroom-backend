@@ -64,6 +64,13 @@ export class UpdateGeneralsettingDto {
   })
   faqs?: string;
 
+  @ApiPropertyOptional({
+    type: 'string',
+    description: 'Array Kebijakan Pengiriman dalam format JSON string.',
+    example: '[{"title":{"en":"Standard Shipping"},"description":{"en":"Estimate 3-5 days..."}}]',
+  })
+  shippingPolicy?: string;
+
   @ApiPropertyOptional({ type: 'string' })
   telegramBotToken?: string;
 

@@ -14,16 +14,10 @@ export class GeneralsettingService {
 
   // --- Metode untuk Panel Admin ---
 
-  /**
-   * Mengambil semua data pengaturan umum untuk panel admin.
-   */
   async findOne() {
     return this.prisma.generalSetting.findUnique({ where: { id: 1 } });
   }
 
-  /**
-   * Mengupdate data pengaturan umum dari panel admin.
-   */
   async update(data: any) {
     return this.prisma.generalSetting.upsert({
       where: { id: 1 },
@@ -35,9 +29,6 @@ export class GeneralsettingService {
     });
   }
 
-  /**
-   * Mengupdate mode pengiriman saja dari panel admin.
-   */
   async updateShippingMode(dto: UpdateShippingModeDto) {
     return this.prisma.generalSetting.upsert({
       where: { id: 1 },
@@ -53,9 +44,6 @@ export class GeneralsettingService {
 
   // --- Metode untuk Frontend ---
 
-  /**
-   * Mengambil data spesifik untuk Homepage.
-   */
   async findForHomepage() {
     return this.prisma.generalSetting.findUnique({
       where: { id: 1 },
@@ -67,9 +55,6 @@ export class GeneralsettingService {
     });
   }
 
-  /**
-   * Mengambil data spesifik untuk Navigasi dan Footer.
-   */
   async findForNavAndFooter() {
     return this.prisma.generalSetting.findUnique({
       where: { id: 1 },
@@ -86,10 +71,6 @@ export class GeneralsettingService {
     });
   }
 
-  /**
-   * --- FUNGSI BARU YANG DITAMBAHKAN ---
-   * Mengambil data spesifik dan aman untuk halaman "About".
-   */
   async findForAboutPage() {
     return this.prisma.generalSetting.findUnique({
       where: { id: 1 },
@@ -106,6 +87,8 @@ export class GeneralsettingService {
         socialMedia: true,
         aboutItems: true,
         faqs: true,
+        // --- TAMBAHKAN BARIS INI ---
+        shippingPolicy: true,
       },
     });
   }
