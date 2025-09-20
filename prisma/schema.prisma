@@ -7,29 +7,43 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ... Enum tidak berubah ...
+// --- ENUMS ---
+
 enum Role {
   OWNER
   ADMIN
   USER
 }
+
 enum PaymentStatus {
-  PENDING_PAYMENT // Menunggu tindakan pembayaran oleh user
-  PAID            // Pembayaran berhasil
-  FAILED          // Pembayaran gagal
-  EXPIRED         // Batas waktu pembayaran habis
-  CANCELLED       // Pembayaran dibatalkan oleh user atau sistem
-  REFUNDED        // Dana telah dikembalikan
+  PENDING_PAYMENT
+  PAID
+  FAILED
+  EXPIRED
+  CANCELLED
+  REFUNDED
 }
 
 enum OrderStatus {
-  PENDING     // Pesanan baru, menunggu konfirmasi pembayaran
-  PROCESSING  // Pembayaran diterima, pesanan sedang disiapkan
-  SHIPPING    // Pesanan telah dikirim
-  COMPLETED   // Pesanan telah sampai dan selesai
-  CANCELLED   // Pesanan dibatalkan (sebelum dikirim)
-  REFUND      // Proses pengembalian barang/dana
+  PENDING
+  PROCESSING
+  SHIPPING
+  COMPLETED
+  CANCELLED
+  REFUND
 }
+
+enum DiscountType {
+  SALE
+  VOUCHER
+}
+
+enum DiscountValueType {
+  PERCENTAGE
+  FIXED
+}
+
+// --- MODELS ---
 
 model User {
   id                    Int            @id @default(autoincrement())
@@ -48,6 +62,7 @@ model User {
   sentMessages          ChatMessage[]
   orders                Order[]
   cart                  Cart?
+  voucherUsages         VoucherUsage[]
 }
 
 model Language {
@@ -82,15 +97,15 @@ model Category {
 }
 
 model SubCategory {
-  id         Int      @id @default(autoincrement())
+  id         Int       @id @default(autoincrement())
   name       Json
   imageUrl   String?
-  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  category   Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   categoryId Int
   products   Product[]
 
   @@unique([categoryId, name])
-  @@index([categoryId]) // --- REVISI SINTAKS: Indeks didefinisikan di sini ---
+  @@index([categoryId])
 }
 
 model Product {
@@ -106,12 +121,14 @@ model Product {
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   images        ProductImage[]
-  subCategory   SubCategory @relation(fields: [subCategoryId], references: [id], onDelete: Restrict)
+  subCategory   SubCategory    @relation(fields: [subCategoryId], references: [id], onDelete: Restrict)
   subCategoryId Int
   orderItems    OrderItem[]
   prices        ProductPrice[]
   cartItems     CartItem[]
-  @@index([subCategoryId]) // --- REVISI SINTAKS: Indeks didefinisikan di sini ---
+  discounts     Discount[]
+
+  @@index([subCategoryId])
 }
 
 model ProductPrice {
@@ -142,13 +159,13 @@ model Testimonial {
 }
 
 model PaymentMethod {
-  id        Int      @id @default(autoincrement())
-  name      String   @unique
-  code      String   @unique
-  isActive  Boolean  @default(true)
-  config    Json     @default("{}")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
+  code      String    @unique
+  isActive  Boolean   @default(true)
+  config    Json      @default("{}")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
   orders    Order[]
 }
 
@@ -160,8 +177,8 @@ model Order {
   shippingCost    Float
   subtotal        Float
   total           Float
-  paymentStatus   PaymentStatus @default(PENDING_PAYMENT) // Default: Menunggu Pembayaran
-  orderStatus     OrderStatus   @default(PENDING) // Default: Pesanan baru
+  paymentStatus   PaymentStatus @default(PENDING_PAYMENT)
+  orderStatus     OrderStatus   @default(PENDING)
   paymentMethod   PaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
   paymentMethodId Int?
   orderItems      OrderItem[]
@@ -173,27 +190,99 @@ model Order {
   paymentDetails  Json?
   midtransOrderId String?       @unique
   paypalOrderId   String?       @unique
+  voucherUsage    VoucherUsage?
 
   @@index([userId])
   @@index([paymentMethodId])
 }
 
 model OrderItem {
-  id        Int     @id @default(autoincrement())
-  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  orderId   Int
-  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
-  productId Int?
-  productName    Json    // Nama produk saat dibeli
-  productVariant Json    // Varian produk saat dibeli
-  productImage   String? // URL gambar produk saat dibeli
-  price     Float   // Harga produk pada saat dibeli
-  qty       Int
-  subtotal  Float
+  id             Int      @id @default(autoincrement())
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId        Int
+  product        Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productId      Int?
+  productName    Json
+  productVariant Json
+  productImage   String?
+  price          Float
+  qty            Int
+  subtotal       Float
 
   @@index([orderId])
   @@index([productId])
 }
+
+model GeneralSetting {
+  id               Int      @id @default(1)
+  shopName         Json?
+  shopDescription  Json?
+  logoUrl          String?
+  faviconUrl       String?
+  bannerImageUrl   String?
+  bannerVideoUrl   String?
+  address          String?  @db.Text
+  email            String?
+  phoneNumber      String?
+  socialMedia      Json     @default("{}")
+  aboutItems       Json?    @default("[]")
+  faqs             Json?    @default("[]")
+  shippingPolicy   Json?    @default("[]")
+  telegramBotToken String?
+  telegramChatId   String?
+  shippingMode     String   @default("manual")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+// --- DISCOUNT MODELS ---
+
+model Discount {
+  id             Int               @id @default(autoincrement())
+  name           String
+  description    String?
+  type           DiscountType
+  discountType   DiscountValueType
+  value          Float
+  startDate      DateTime
+  endDate        DateTime
+  isActive       Boolean           @default(true)
+  maxUsesPerUser Int?
+  products       Product[]
+  vouchers       Voucher[]
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+}
+
+model Voucher {
+  id         Int            @id @default(autoincrement())
+  code       String         @unique
+  maxUses    Int?
+  usesCount  Int            @default(0)
+  isActive   Boolean        @default(true)
+  discount   Discount       @relation(fields: [discountId], references: [id])
+  discountId Int
+  usages     VoucherUsage[]
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+}
+
+model VoucherUsage {
+  id        Int      @id @default(autoincrement())
+  usedAt    DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    Int
+  voucher   Voucher  @relation(fields: [voucherId], references: [id])
+  voucherId Int
+  order     Order    @relation(fields: [orderId], references: [id])
+  orderId   Int      @unique
+
+  @@index([userId])
+  @@index([voucherId])
+}
+
+
+// --- OTHER MODELS ---
 
 model ShippingProvider {
   id          Int      @id @default(autoincrement())
@@ -234,8 +323,7 @@ model ShippingRate {
   prices    ShippingRatePrice[]
   createdAt DateTime            @default(now())
   updatedAt DateTime            @updatedAt
-
-  @@index([zoneId]) // --- REVISI SINTAKS: Indeks didefinisikan di sini ---
+  @@index([zoneId])
 }
 
 model ShippingRatePrice {
@@ -271,35 +359,13 @@ model ChatMessage {
   createdAt      DateTime     @default(now())
 }
 
-model GeneralSetting {
-  id               Int      @id @default(1)
-  shopName         Json?
-  shopDescription  Json?
-  logoUrl          String?
-  faviconUrl       String?
-  bannerImageUrl   String?
-  bannerVideoUrl   String?
-  address          String?  @db.Text
-  email            String?
-  phoneNumber      String?
-  socialMedia      Json     @default("{}")
-  aboutItems       Json?    @default("[]")
-  faqs             Json?    @default("[]")
-  shippingPolicy     Json?    @default("[]")
-  telegramBotToken String?
-  telegramChatId   String?
-  shippingMode     String   @default("manual")
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-}
-
 model Cart {
-  id        Int      @id @default(autoincrement())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId    Int      @unique
+  id        Int        @id @default(autoincrement())
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    Int        @unique
   items     CartItem[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
 }
 
 model CartItem {
@@ -309,7 +375,6 @@ model CartItem {
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   productId Int
   quantity  Int
-
   @@unique([cartId, productId])
   @@index([cartId])
   @@index([productId])

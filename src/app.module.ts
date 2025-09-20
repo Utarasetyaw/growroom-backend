@@ -27,6 +27,7 @@ import { UserFrontendModule } from './user_frontend/user_frontend.module';
 import { CartModule } from './cart/cart.module';
 import { MidtransModule } from './midtrans/midtrans.module';
 import { PaypalModule } from './paypal/paypal.module'; 
+import { DiscountsModule } from './discounts/discounts.module'; // <-- IMPORT MODUL BARU
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { PaypalModule } from './paypal/paypal.module';
     CartModule,
     MidtransModule,
     PaypalModule,
+    DiscountsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
