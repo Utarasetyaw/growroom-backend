@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Query, Req, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query, Req, UseGuards, ValidationPipe } from '@nestjs/common';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiResponse, ApiTags, ApiBadRequestResponse } from '@nestjs/swagger';
 import { UserFrontendService } from './user_frontend.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RequestWithUser } from '../common/interfaces/request-with-user.interface';
@@ -15,13 +15,16 @@ import {
 import { GeneralSettingResponseDto } from '../generalsetting/dto/general-setting-response.dto';
 import { MyProfileResponseDto } from '../users/dto/my-profile-response.dto';
 import { UserResponseDto } from '../users/dto/user-response.dto';
+import { DiscountsService } from '../discounts/discounts.service';
+import { ValidateVoucherDto } from '../discounts/dto/validate-voucher.dto';
 
 @ApiTags('Frontend - User View')
 @Controller('user-frontend')
 export class UserFrontendController {
-  constructor(private readonly userFrontendService: UserFrontendService) {}
-
-  // --- Public Endpoints ---
+  constructor(
+    private readonly userFrontendService: UserFrontendService,
+    private readonly discountsService: DiscountsService,
+  ) {}
 
   @Get('home')
   @ApiOperation({ summary: 'Mengambil semua data untuk halaman utama' })
@@ -59,8 +62,6 @@ export class UserFrontendController {
     return this.userFrontendService.getNavAndFooterData();
   }
   
-  // --- Private Endpoints (Wajib Login) ---
-
   @Get('profile')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -90,5 +91,18 @@ export class UserFrontendController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   getCheckoutPageData(@Req() req: RequestWithUser) {
     return this.userFrontendService.getCheckoutPageData(req.user.userId);
+  }
+
+  @Post('vouchers/validate')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Memvalidasi kode voucher di keranjang' })
+  @ApiResponse({ status: 200, description: 'Voucher valid dan detail diskon dikembalikan.' })
+  @ApiBadRequestResponse({ description: 'Voucher tidak valid (kedaluwarsa, tidak cocok, dll.)' })
+  validateVoucher(
+    @Req() req: RequestWithUser,
+    @Body(ValidationPipe) validateVoucherDto: ValidateVoucherDto,
+  ) {
+    return this.discountsService.validateVoucher(req.user.userId, validateVoucherDto);
   }
 }

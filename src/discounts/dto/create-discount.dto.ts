@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsString, IsNotEmpty, IsEnum, IsNumber, Min, IsDate, IsArray, IsInt,
-  ArrayNotEmpty, IsOptional, ValidateIf, IsBoolean
+  ArrayNotEmpty, IsOptional, ValidateIf, IsBoolean, IsObject
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { DiscountType, DiscountValueType } from '@prisma/client';
@@ -27,11 +27,16 @@ export class CreateDiscountDto {
   @IsNotEmpty()
   discountType: DiscountValueType;
 
-  @ApiProperty({ description: 'Nilai diskon (cth: 15 untuk 15% atau 50000 untuk potongan Rp 50.000)', example: 15 })
-  @IsNumber()
-  @Min(0)
+  @ApiProperty({ 
+    description: 'Nilai diskon. Angka untuk PERCENTAGE, objek JSON untuk FIXED. Cth: 15 atau {"USD":10, "IDR":150000}', 
+    example: 15 
+  })
   @IsNotEmpty()
-  value: number;
+  @ValidateIf(o => o.discountType === DiscountValueType.PERCENTAGE)
+  @IsNumber({}, { message: 'Nilai diskon harus berupa angka untuk tipe Persen' })
+  @ValidateIf(o => o.discountType === DiscountValueType.FIXED)
+  @IsObject({ message: 'Nilai diskon harus berupa objek untuk tipe Harga Tetap' })
+  value: any;
 
   @ApiProperty({ description: 'Tanggal mulai promo', example: '2025-09-25T00:00:00.000Z' })
   @Type(() => Date)

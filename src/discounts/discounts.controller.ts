@@ -15,7 +15,6 @@ import { Role } from '@prisma/client';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('discounts')
 export class DiscountsController {
-  // Tambahkan logger untuk logging yang lebih terstruktur
   private readonly logger = new Logger(DiscountsController.name);
 
   constructor(private readonly discountsService: DiscountsService) {}
@@ -24,15 +23,10 @@ export class DiscountsController {
   @Roles(Role.OWNER, Role.ADMIN)
   @ApiOperation({ summary: 'Membuat diskon/promo baru' })
   create(@Body(new ValidationPipe({ transform: true, whitelist: true })) createDiscountDto: CreateDiscountDto) {
-    // --- LOG DITAMBAHKAN DI SINI ---
     this.logger.log('Endpoint POST /discounts dipanggil...');
-    console.log('DTO yang diterima di Controller:', createDiscountDto);
-    // --------------------------------
-
     return this.discountsService.create(createDiscountDto);
   }
 
-  // ... (fungsi lain tidak perlu diubah)
   @Get()
   @Roles(Role.OWNER, Role.ADMIN)
   @ApiOperation({ summary: 'Mendapatkan semua daftar diskon/promo' })
@@ -50,7 +44,7 @@ export class DiscountsController {
   @Patch(':id')
   @Roles(Role.OWNER, Role.ADMIN)
   @ApiOperation({ summary: 'Memperbarui data diskon/promo' })
-  update(@Param('id', ParseIntPipe) id: number, @Body(ValidationPipe) updateDiscountDto: UpdateDiscountDto) {
+  update(@Param('id', ParseIntPipe) id: number, @Body(new ValidationPipe({ transform: true, whitelist: true })) updateDiscountDto: UpdateDiscountDto) {
     return this.discountsService.update(id, updateDiscountDto);
   }
 

@@ -4,6 +4,7 @@ import { CreateDiscountDto } from './dto/create-discount.dto';
 import { UpdateDiscountDto } from './dto/update-discount.dto';
 import { DiscountType } from '@prisma/client';
 import * as crypto from 'crypto';
+import { ValidateVoucherDto } from './dto/validate-voucher.dto';
 
 @Injectable()
 export class DiscountsService {
@@ -17,10 +18,7 @@ export class DiscountsService {
     endDate: Date,
     discountIdToExclude?: number,
   ) {
-    // --- LOG DITAMBAHKAN DI SINI ---
     this.logger.log('Memeriksa tumpang tindih promo SALE...');
-    console.log({ productIds, startDate, endDate, discountIdToExclude });
-    // --------------------------------
     
     const whereClause: any = {
       type: DiscountType.SALE,
@@ -54,14 +52,10 @@ export class DiscountsService {
         `Produk "${productName}" sudah dalam diskon "${conflictingDiscountName}". Silakan edit promo yang sudah ada atau pilih produk lain.`,
       );
     }
-    this.logger.log('Tidak ditemukan tumpang tindih.');
   }
 
   async create(createDiscountDto: CreateDiscountDto) {
-    // --- LOG DITAMBAHKAN DI SINI ---
     this.logger.log('Memulai proses `create` di service...');
-    console.log('Data yang diterima service:', createDiscountDto);
-    // --------------------------------
     
     try {
         const {
@@ -81,7 +75,6 @@ export class DiscountsService {
           }
       
           return this.prisma.$transaction(async (tx) => {
-            this.logger.log('Membuat data diskon utama di database...');
             const discount = await tx.discount.create({
               data: {
                 ...discountData,
@@ -90,11 +83,9 @@ export class DiscountsService {
                 },
               },
             });
-            this.logger.log(`Diskon #${discount.id} berhasil dibuat.`);
       
             if (discount.type === DiscountType.VOUCHER && voucherQuantity) {
-              this.logger.log(`Membuat ${voucherQuantity} voucher...`);
-              const vouchersToCreate: import('@prisma/client').Prisma.VoucherCreateManyInput[] = [];
+              const vouchersToCreate: { code: string; maxUses?: number; discountId: number }[] = [];
               for (let i = 0; i < voucherQuantity; i++) {
                 const randomPart = crypto.randomBytes(3).toString('hex').toUpperCase();
                 const code = `${voucherCodePrefix || 'VCR'}-${randomPart}`;
@@ -110,7 +101,6 @@ export class DiscountsService {
                       data: vouchersToCreate,
                   });
               }
-              this.logger.log('Voucher berhasil dibuat.');
             }
       
             return tx.discount.findUnique({
@@ -119,14 +109,11 @@ export class DiscountsService {
             });
           });
     } catch (error) {
-        // --- LOG ERROR DETAIL ---
         this.logger.error('Terjadi error saat membuat diskon:', error.stack);
-        // Lempar kembali error agar NestJS bisa mengirim respons HTTP yang sesuai
         throw error;
     }
   }
 
-  // ... (Sisa file tidak perlu diubah, karena fokus kita di fungsi 'create')
   findAll() {
     return this.prisma.discount.findMany({
       include: {
@@ -187,5 +174,67 @@ export class DiscountsService {
     return this.prisma.discount.delete({
       where: { id },
     });
+  }
+
+  async validateVoucher(userId: number, dto: ValidateVoucherDto) {
+    const { voucherCode, cartItems } = dto;
+    const now = new Date();
+
+    const voucher = await this.prisma.voucher.findUnique({
+      where: { code: voucherCode },
+      include: {
+        discount: {
+          include: {
+            products: { select: { id: true } },
+          },
+        },
+      },
+    });
+
+    if (!voucher || !voucher.isActive || !voucher.discount.isActive) {
+      throw new BadRequestException('Voucher tidak valid atau sudah tidak aktif.');
+    }
+
+    if (now < voucher.discount.startDate || now > voucher.discount.endDate) {
+      throw new BadRequestException('Voucher sudah kedaluwarsa atau belum berlaku.');
+    }
+
+    if (voucher.maxUses !== null && voucher.usesCount >= voucher.maxUses) {
+      throw new BadRequestException('Voucher sudah mencapai batas penggunaan total.');
+    }
+
+    if (voucher.discount.maxUsesPerUser !== null) {
+      const userUsageCount = await this.prisma.voucherUsage.count({
+        where: {
+          userId: userId,
+          voucher: { discountId: voucher.discountId },
+        },
+      });
+      if (userUsageCount >= voucher.discount.maxUsesPerUser) {
+        throw new BadRequestException('Anda sudah mencapai batas penggunaan untuk promo ini.');
+      }
+    }
+
+    const discountProductIds = voucher.discount.products.map(p => p.id);
+    const cartProductIds = cartItems.map(item => item.productId);
+    
+    const isProductMatch = cartProductIds.some(cartProductId => 
+      discountProductIds.includes(cartProductId)
+    );
+
+    if (!isProductMatch) {
+      throw new BadRequestException('Voucher tidak berlaku untuk produk di keranjang Anda.');
+    }
+
+    this.logger.log(`Voucher "${voucherCode}" berhasil divalidasi untuk user #${userId}`);
+    return {
+      message: 'Voucher berhasil diterapkan!',
+      discount: {
+        name: voucher.discount.name,
+        type: voucher.discount.discountType,
+        value: voucher.discount.value,
+        applicableProductIds: discountProductIds,
+      },
+    };
   }
 }

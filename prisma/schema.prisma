@@ -243,7 +243,7 @@ model Discount {
   description    String?
   type           DiscountType
   discountType   DiscountValueType
-  value          Float
+  value           Json     
   startDate      DateTime
   endDate        DateTime
   isActive       Boolean           @default(true)

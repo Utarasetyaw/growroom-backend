@@ -14,6 +14,7 @@ import { PaymentmethodModule } from '../paymentmethod/paymentmethod.module';
 import { ShippingZoneModule } from '../shipping-zone/shipping-zone.module';
 import { LanguagesModule } from '../languages/languages.module';
 import { CurrenciesModule } from '../currencies/currencies.module';
+import { DiscountsModule } from '../discounts/discounts.module'; // <-- 1. Impor DiscountsModule
 
 @Module({
   // Daftarkan semua module di sini agar service-nya dapat di-inject
@@ -29,6 +30,7 @@ import { CurrenciesModule } from '../currencies/currencies.module';
     ShippingZoneModule,
     LanguagesModule,
     CurrenciesModule,
+    DiscountsModule, // <-- 2. Daftarkan di sini
   ],
   controllers: [UserFrontendController],
   providers: [UserFrontendService],
