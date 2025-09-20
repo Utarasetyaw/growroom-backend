@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Body, Patch, Param, Delete, ParseIntPipe, UseGuards, ValidationPipe
+  Controller, Get, Post, Body, Patch, Param, Delete, ParseIntPipe, UseGuards, ValidationPipe, Logger
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { DiscountsService } from './discounts.service';
@@ -15,15 +15,24 @@ import { Role } from '@prisma/client';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('discounts')
 export class DiscountsController {
+  // Tambahkan logger untuk logging yang lebih terstruktur
+  private readonly logger = new Logger(DiscountsController.name);
+
   constructor(private readonly discountsService: DiscountsService) {}
 
   @Post()
   @Roles(Role.OWNER, Role.ADMIN)
   @ApiOperation({ summary: 'Membuat diskon/promo baru' })
-  create(@Body(ValidationPipe) createDiscountDto: CreateDiscountDto) {
+  create(@Body(new ValidationPipe({ transform: true, whitelist: true })) createDiscountDto: CreateDiscountDto) {
+    // --- LOG DITAMBAHKAN DI SINI ---
+    this.logger.log('Endpoint POST /discounts dipanggil...');
+    console.log('DTO yang diterima di Controller:', createDiscountDto);
+    // --------------------------------
+
     return this.discountsService.create(createDiscountDto);
   }
 
+  // ... (fungsi lain tidak perlu diubah)
   @Get()
   @Roles(Role.OWNER, Role.ADMIN)
   @ApiOperation({ summary: 'Mendapatkan semua daftar diskon/promo' })

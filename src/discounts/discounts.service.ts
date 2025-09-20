@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateDiscountDto } from './dto/create-discount.dto';
 import { UpdateDiscountDto } from './dto/update-discount.dto';
@@ -7,6 +7,8 @@ import * as crypto from 'crypto';
 
 @Injectable()
 export class DiscountsService {
+  private readonly logger = new Logger(DiscountsService.name);
+
   constructor(private prisma: PrismaService) {}
 
   private async checkForSaleOverlaps(
@@ -15,6 +17,11 @@ export class DiscountsService {
     endDate: Date,
     discountIdToExclude?: number,
   ) {
+    // --- LOG DITAMBAHKAN DI SINI ---
+    this.logger.log('Memeriksa tumpang tindih promo SALE...');
+    console.log({ productIds, startDate, endDate, discountIdToExclude });
+    // --------------------------------
+    
     const whereClause: any = {
       type: DiscountType.SALE,
       startDate: { lte: endDate },
@@ -35,75 +42,91 @@ export class DiscountsService {
       include: {
         discounts: {
             where: whereClause,
-            select: { name: true } // Hanya include nama diskon
+            select: { name: true }
         }
       }
     });
 
     if (conflictingProduct) {
-      // --- REVISI DI SINI: Gunakan optional chaining (?.) dan fallback text ---
       const productName = (conflictingProduct.name as any)?.en || 'produk yang dipilih';
       const conflictingDiscountName = conflictingProduct.discounts[0]?.name || 'lain';
       throw new BadRequestException(
         `Produk "${productName}" sudah dalam diskon "${conflictingDiscountName}". Silakan edit promo yang sudah ada atau pilih produk lain.`,
       );
     }
+    this.logger.log('Tidak ditemukan tumpang tindih.');
   }
 
   async create(createDiscountDto: CreateDiscountDto) {
-    const {
-      productIds,
-      voucherQuantity,
-      voucherCodePrefix,
-      voucherMaxUses,
-      ...discountData
-    } = createDiscountDto;
-
-    if (discountData.type === DiscountType.SALE) {
-      await this.checkForSaleOverlaps(
-        productIds,
-        discountData.startDate,
-        discountData.endDate,
-      );
-    }
-
-    return this.prisma.$transaction(async (tx) => {
-      const discount = await tx.discount.create({
-        data: {
-          ...discountData,
-          products: {
-            connect: productIds.map((id) => ({ id })),
-          },
-        },
-      });
-
-      if (discount.type === DiscountType.VOUCHER && voucherQuantity) {
-        const vouchersToCreate: { code: string; maxUses?: number; discountId: number }[] = [];
-        for (let i = 0; i < voucherQuantity; i++) {
-          const randomPart = crypto.randomBytes(3).toString('hex').toUpperCase();
-          const code = `${voucherCodePrefix || 'VCR'}-${randomPart}`;
-          
-          vouchersToCreate.push({
-            code,
-            // --- REVISI KECIL: Langsung teruskan `voucherMaxUses` (undefined diterima oleh Prisma) ---
-            maxUses: voucherMaxUses,
-            discountId: discount.id,
-          });
-        }
-        if (vouchersToCreate.length > 0) {
-            await tx.voucher.createMany({
-                data: vouchersToCreate,
+    // --- LOG DITAMBAHKAN DI SINI ---
+    this.logger.log('Memulai proses `create` di service...');
+    console.log('Data yang diterima service:', createDiscountDto);
+    // --------------------------------
+    
+    try {
+        const {
+            productIds,
+            voucherQuantity,
+            voucherCodePrefix,
+            voucherMaxUses,
+            ...discountData
+          } = createDiscountDto;
+      
+          if (discountData.type === DiscountType.SALE) {
+            await this.checkForSaleOverlaps(
+              productIds,
+              discountData.startDate,
+              discountData.endDate,
+            );
+          }
+      
+          return this.prisma.$transaction(async (tx) => {
+            this.logger.log('Membuat data diskon utama di database...');
+            const discount = await tx.discount.create({
+              data: {
+                ...discountData,
+                products: {
+                  connect: productIds.map((id) => ({ id })),
+                },
+              },
             });
-        }
-      }
-
-      return tx.discount.findUnique({
-        where: { id: discount.id },
-        include: { products: true, vouchers: true },
-      });
-    });
+            this.logger.log(`Diskon #${discount.id} berhasil dibuat.`);
+      
+            if (discount.type === DiscountType.VOUCHER && voucherQuantity) {
+              this.logger.log(`Membuat ${voucherQuantity} voucher...`);
+              const vouchersToCreate: import('@prisma/client').Prisma.VoucherCreateManyInput[] = [];
+              for (let i = 0; i < voucherQuantity; i++) {
+                const randomPart = crypto.randomBytes(3).toString('hex').toUpperCase();
+                const code = `${voucherCodePrefix || 'VCR'}-${randomPart}`;
+                
+                vouchersToCreate.push({
+                  code,
+                  maxUses: voucherMaxUses,
+                  discountId: discount.id,
+                });
+              }
+              if (vouchersToCreate.length > 0) {
+                  await tx.voucher.createMany({
+                      data: vouchersToCreate,
+                  });
+              }
+              this.logger.log('Voucher berhasil dibuat.');
+            }
+      
+            return tx.discount.findUnique({
+              where: { id: discount.id },
+              include: { products: true, vouchers: true },
+            });
+          });
+    } catch (error) {
+        // --- LOG ERROR DETAIL ---
+        this.logger.error('Terjadi error saat membuat diskon:', error.stack);
+        // Lempar kembali error agar NestJS bisa mengirim respons HTTP yang sesuai
+        throw error;
+    }
   }
 
+  // ... (Sisa file tidak perlu diubah, karena fokus kita di fungsi 'create')
   findAll() {
     return this.prisma.discount.findMany({
       include: {
