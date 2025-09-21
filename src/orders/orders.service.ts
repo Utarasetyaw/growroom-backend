@@ -328,7 +328,7 @@ export class OrdersService {
   }
 
   private async _calculateTotals(userId: number, dto: CreateOrderDto): Promise<CalculatedTotals> {
-    const { orderItems, shippingRateId, currencyCode, voucherCode } = dto;
+    const { orderItems, shippingRateId, shippingZoneId, currencyCode, voucherCode } = dto;
     if (!orderItems || orderItems.length === 0) {
       throw new BadRequestException('Item pesanan tidak boleh kosong.');
     }
@@ -353,6 +353,8 @@ export class OrdersService {
 
     let subtotal = 0;
     let saleDiscountTotal = 0;
+    let totalWeight = 0;
+
     for (const item of orderItems) {
       const product = productMap.get(item.productId);
       if (!product) throw new BadRequestException(`Produk dengan ID ${item.productId} tidak ditemukan.`);
@@ -361,6 +363,7 @@ export class OrdersService {
       
       const originalPrice = product.prices[0].price;
       subtotal += originalPrice * item.qty;
+      totalWeight += (product.weight || 0) * item.qty;
 
       const saleDiscount = product.discounts[0];
       if (saleDiscount) {
@@ -375,6 +378,30 @@ export class OrdersService {
         }
         saleDiscountTotal += itemDiscountAmount * item.qty;
       }
+    }
+
+    let shippingCost = 0;
+    if (shippingRateId) {
+      const rate = await this.prisma.shippingRate.findUnique({
+        where: { id: shippingRateId },
+        include: { prices: { where: { currency: { code: currencyCode } } } },
+      });
+      if (!rate?.prices[0]) throw new BadRequestException(`Tarif pengiriman kota tidak valid.`);
+      
+      const pricePerUnit = rate.prices[0].price;
+      const totalWeightInKg = Math.ceil(totalWeight / 1000);
+      shippingCost = Math.max(1, totalWeightInKg) * pricePerUnit;
+
+    } else if (shippingZoneId) {
+      const zone = await this.prisma.shippingZone.findUnique({
+        where: { id: shippingZoneId },
+        include: { prices: { where: { currency: { code: currencyCode } } } },
+      });
+      if (!zone?.prices[0]) throw new BadRequestException(`Tarif pengiriman negara/zona tidak valid.`);
+      
+      const pricePerUnit = zone.prices[0].price;
+      const totalWeightInKg = Math.ceil(totalWeight / 1000);
+      shippingCost = Math.max(1, totalWeightInKg) * pricePerUnit;
     }
 
     let voucherDiscountTotal = 0;
@@ -396,16 +423,6 @@ export class OrdersService {
         }
       }
       voucherDiscountTotal = Math.min(voucherDiscountTotal, subtotalAfterSale);
-    }
-
-    let shippingCost = 0;
-    if (shippingRateId) {
-      const rate = await this.prisma.shippingRate.findUnique({
-        where: { id: shippingRateId },
-        include: { prices: { where: { currency: { code: currencyCode } } } },
-      });
-      if (!rate?.prices[0]) throw new BadRequestException(`Tarif pengiriman tidak valid untuk mata uang ${currencyCode}.`);
-      shippingCost = rate.prices[0].price;
     }
 
     const grandTotal = subtotal - saleDiscountTotal - voucherDiscountTotal + shippingCost;

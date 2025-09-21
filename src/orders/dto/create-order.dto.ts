@@ -50,12 +50,17 @@ export class CreateOrderDto {
   @Length(3, 3, { message: 'Kode mata uang harus terdiri dari 3 karakter.' })
   currencyCode: string;
 
-  @ApiPropertyOptional({ description: 'ID dari tarif pengiriman yang dipilih.', example: 5 })
+  @ApiPropertyOptional({ description: 'ID dari tarif pengiriman (kota) yang dipilih.', example: 5 })
   @IsOptional()
   @IsInt()
   shippingRateId?: number;
 
-  // --- TAMBAHAN ---
+  // --- TAMBAHAN UNTUK FIX ONGKIR ---
+  @ApiPropertyOptional({ description: 'ID dari metode pengiriman (negara), digunakan sebagai fallback.', example: 1 })
+  @IsOptional()
+  @IsInt()
+  shippingZoneId?: number;
+
   @ApiPropertyOptional({ description: 'Kode voucher yang ingin digunakan (jika ada).', example: 'HEMAT10' })
   @IsOptional()
   @IsString()
