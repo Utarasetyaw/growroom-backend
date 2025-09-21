@@ -7,7 +7,6 @@ import * as PDFDocument from 'pdfkit';
 import * as fs from 'fs';
 import * as path from 'path';
 
-// --- 1. OBJEK UNTUK SEMUA TEKS TERJEMAHAN ---
 const translations = {
   en: {
     INVOICE: 'INVOICE',
@@ -20,6 +19,8 @@ const translations = {
     UNIT_PRICE: 'Unit Price',
     TOTAL: 'Total',
     SUBTOTAL: 'Subtotal',
+    SALE_DISCOUNT: 'Sale Discount', // <-- TAMBAHAN
+    VOUCHER_DISCOUNT: 'Voucher Discount', // <-- TAMBAHAN
     SHIPPING_FEE: 'Shipping Fee',
     GRAND_TOTAL: 'Grand Total',
     THANK_YOU: 'Thank you for your purchase.',
@@ -42,6 +43,8 @@ const translations = {
     UNIT_PRICE: 'Harga Satuan',
     TOTAL: 'Total',
     SUBTOTAL: 'Subtotal',
+    SALE_DISCOUNT: 'Diskon Penjualan', // <-- TAMBAHAN
+    VOUCHER_DISCOUNT: 'Diskon Voucher', // <-- TAMBAHAN
     SHIPPING_FEE: 'Biaya Kirim',
     GRAND_TOTAL: 'Total Akhir',
     THANK_YOU: 'Terima kasih telah berbelanja di toko kami.',
@@ -68,10 +71,9 @@ export class PdfService {
 
   constructor(private prisma: PrismaService) {}
 
-  // --- 2. FUNGSI UTAMA KINI MENERIMA PARAMETER 'lang' ---
   async generateInvoicePdf(order: OrderResponseDto, lang: 'en' | 'id'): Promise<Buffer> {
     const settings = await this.prisma.generalSetting.findUnique({ where: { id: 1 } });
-    const T = translations[lang]; // Memilih objek terjemahan yang benar
+    const T = translations[lang];
 
     return new Promise(async (resolve) => {
       const doc = new PDFDocument({ size: 'A4', margin: 50 });
@@ -81,7 +83,7 @@ export class PdfService {
 
       await this.generateHeader(doc, settings, lang);
       this.generateCustomerInformation(doc, order, T, lang);
-      this.generateInvoiceTable(doc, order, T, lang);
+      this.generateInvoiceTable(doc, order, T, lang); // Method ini akan kita revisi
       this.generateFooter(doc, settings, T);
 
       doc.end();
@@ -90,7 +92,7 @@ export class PdfService {
 
   async generateFinanceReportPdf(summary: FinanceReportData, startStr: string, endStr: string): Promise<Buffer> {
     const settings = await this.prisma.generalSetting.findUnique({ where: { id: 1 } });
-    const T = translations['id']; // Laporan keuangan default ke Bahasa Indonesia
+    const T = translations['id'];
 
     return new Promise(async (resolve) => {
       const doc = new PDFDocument({ size: 'A4', margin: 50 });
@@ -136,7 +138,6 @@ export class PdfService {
 
     const customerInfoTop = 200;
     
-    // --- 3. MEM-PARSING DAN MEM-FORMAT ALAMAT DENGAN BENAR ---
     const addressObject = this.parseAddress(order.address);
     const addressLines = [
         addressObject.name,
@@ -144,7 +145,7 @@ export class PdfService {
         addressObject.street,
         `${addressObject.city}, ${addressObject.province} ${addressObject.postalCode}`,
         addressObject.country
-    ].filter(Boolean); // Menghapus baris yang kosong
+    ].filter(Boolean);
 
     doc.fontSize(10).font('Helvetica-Bold').text(T.BILLED_TO, 50, customerInfoTop);
     
@@ -165,7 +166,8 @@ export class PdfService {
       .font('Helvetica').text(order.paymentStatus, 450, customerInfoTop + 30)
       .moveDown();
   }
-
+  
+  // --- REVISI UTAMA DI SINI ---
   private generateInvoiceTable(doc: PDFKit.PDFDocument, order: OrderResponseDto, T: any, lang: 'en' | 'id') {
     const invoiceTableTop = 330;
     const currency = order.currencyCode;
@@ -192,15 +194,39 @@ export class PdfService {
       i++;
     }
 
-    const subtotalPosition = invoiceTableTop + (i + 1) * 30;
-    this.generateTableRow(doc, subtotalPosition, '', '', T.SUBTOTAL, this.formatCurrency(order.subtotal, currency, lang));
+    // Mengatur posisi awal untuk summary
+    let summaryPosition = invoiceTableTop + (i + 1) * 30;
 
-    const shippingPosition = subtotalPosition + 20;
-    this.generateTableRow(doc, shippingPosition, '', '', T.SHIPPING_FEE, this.formatCurrency(order.shippingCost, currency, lang));
+    // Menampilkan Subtotal
+    this.generateTableRow(doc, summaryPosition, '', '', T.SUBTOTAL, this.formatCurrency(order.subtotal, currency, lang));
+
+    // Menampilkan Diskon Penjualan (jika ada)
+    if (order.saleDiscountAmount > 0) {
+      summaryPosition += 20; // Turun satu baris
+      doc.fillColor('#E67E22'); // Beri warna berbeda untuk diskon
+      this.generateTableRow(doc, summaryPosition, '', '', T.SALE_DISCOUNT, `- ${this.formatCurrency(order.saleDiscountAmount, currency, lang)}`);
+      doc.fillColor('#444444'); // Kembalikan ke warna default
+    }
     
-    const totalPosition = shippingPosition + 30;
+    // Menampilkan Diskon Voucher (jika ada)
+    if (order.voucherDiscountAmount > 0) {
+      const voucherInfo = order.appliedDiscounts.find(d => d.discountType === 'VOUCHER');
+      const voucherLabel = voucherInfo ? `${T.VOUCHER_DISCOUNT} (${voucherInfo.discountName})` : T.VOUCHER_DISCOUNT;
+      
+      summaryPosition += 20; // Turun satu baris
+      doc.fillColor('#2ECC71'); // Beri warna berbeda untuk voucher
+      this.generateTableRow(doc, summaryPosition, '', '', voucherLabel, `- ${this.formatCurrency(order.voucherDiscountAmount, currency, lang)}`);
+      doc.fillColor('#444444'); // Kembalikan ke warna default
+    }
+
+    // Menampilkan Biaya Kirim
+    summaryPosition += 20;
+    this.generateTableRow(doc, summaryPosition, '', '', T.SHIPPING_FEE, this.formatCurrency(order.shippingCost, currency, lang));
+    
+    // Menampilkan Total Akhir
+    summaryPosition += 30; // Beri jarak lebih sebelum total
     doc.font('Helvetica-Bold');
-    this.generateTableRow(doc, totalPosition, '', '', T.GRAND_TOTAL, this.formatCurrency(order.total, currency, lang));
+    this.generateTableRow(doc, summaryPosition, '', '', T.GRAND_TOTAL, this.formatCurrency(order.total, currency, lang));
     doc.font('Helvetica');
   }
 
@@ -233,8 +259,6 @@ export class PdfService {
     doc.fontSize(10).text(T.THANK_YOU, 50, 760, { align: 'center', width: 500 });
   }
 
-  // --- Helper Utilities ---
-
   private generateTableRow(doc: PDFKit.PDFDocument, y: number, item: string, qty: string, unitCost: string, lineTotal: string) {
     doc
       .fontSize(10)
@@ -250,7 +274,7 @@ export class PdfService {
 
   private formatCurrency(value: number, currency: string, lang: 'en' | 'id') {
     const locale = lang === 'id' ? 'id-ID' : 'en-US';
-    return value.toLocaleString(locale, { style: 'currency', currency: currency });
+    return value.toLocaleString(locale, { style: 'currency', currency: currency, minimumFractionDigits: 2 });
   }
 
   private parseAddress(addressString: string): { [key: string]: string } {
