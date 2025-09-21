@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, Logger } from '@nestjs/common'; // <-- 1. Import Logger
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth,
@@ -9,7 +9,6 @@ import { PdfService } from '../pdf/pdf.service';
 
 @Injectable()
 export class FinanceService {
-  // --- 2. Inisialisasi Logger ---
   private readonly logger = new Logger(FinanceService.name);
 
   constructor(
@@ -68,7 +67,7 @@ export class FinanceService {
             TO_CHAR("createdAt", '${mode === 'day' ? 'YYYY-MM-DD' : mode === 'week' ? 'IYYY-IW' : 'YYYY-MM'}') as label,
             COALESCE(SUM("total"), 0) as omset,
             COUNT(*) as count
-          FROM "Order"
+          FROM "orders" -- <-- PERBAIKAN: dari "Order" menjadi "orders"
           WHERE "createdAt" >= $1 AND "createdAt" <= $2 AND "paymentStatus" = 'PAID'
           GROUP BY label
           ORDER BY label

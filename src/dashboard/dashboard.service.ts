@@ -9,7 +9,7 @@ export class DashboardService {
   // --- 2. Inisialisasi Logger ---
   private readonly logger = new Logger(DashboardService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async getDashboardData() {
     this.logger.log('Memulai proses getDashboardData...');
@@ -26,7 +26,7 @@ export class DashboardService {
         this.getHourlyRevenue(todayStart, todayEnd),
         this.getBestProducts(),
       ]);
-      
+
       this.logger.log('Data mentah berhasil diambil, memformat data pendapatan...');
       const dailyRevenue = this.formatHourlyRevenue(hourlyRevenueData);
 
@@ -70,7 +70,7 @@ export class DashboardService {
       SELECT
         EXTRACT(HOUR FROM "createdAt") as hour,
         COALESCE(SUM(total)::float, 0) as total
-      FROM "Order"
+      FROM "orders" -- <-- PERBAIKAN: dari "Order" menjadi "orders"
       WHERE "createdAt" >= ${start}
         AND "createdAt" <= ${end}
         AND "paymentStatus" = ${PaymentStatus.PAID}::"PaymentStatus"
@@ -80,7 +80,7 @@ export class DashboardService {
     this.logger.log(`Data pendapatan per jam berhasil diambil, ditemukan ${result.length} entri.`);
     return result.map(r => ({ hour: r.hour, total: Number(r.total) }));
   }
-  
+
   private formatHourlyRevenue(data: { hour: number; total: number }[]) {
     const revenueMap = new Map(data.map(item => [item.hour, item.total]));
     const formattedData: { hour: string; total: number }[] = [];
