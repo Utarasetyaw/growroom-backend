@@ -1,3 +1,5 @@
+// File: src/discounts/dto/create-discount.dto.ts
+
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsString, IsNotEmpty, IsEnum, IsNumber, Min, IsDate, IsArray, IsInt,
@@ -27,9 +29,9 @@ export class CreateDiscountDto {
   @IsNotEmpty()
   discountType: DiscountValueType;
 
-  @ApiProperty({ 
-    description: 'Nilai diskon. Angka untuk PERCENTAGE, objek JSON untuk FIXED. Cth: 15 atau {"USD":10, "IDR":150000}', 
-    example: 15 
+  @ApiProperty({
+    description: 'Nilai diskon. Angka untuk PERCENTAGE, objek JSON untuk FIXED. Cth: 15 atau {"USD":10, "IDR":150000}',
+    example: 15
   })
   @IsNotEmpty()
   @ValidateIf(o => o.discountType === DiscountValueType.PERCENTAGE)
@@ -55,7 +57,7 @@ export class CreateDiscountDto {
   @Min(1)
   @IsOptional()
   maxUsesPerUser?: number;
-  
+
   @ApiPropertyOptional({ description: 'Apakah promo ini aktif?', default: true, required: false })
   @IsBoolean()
   @IsOptional()
@@ -67,21 +69,18 @@ export class CreateDiscountDto {
   @IsInt({ each: true })
   productIds: number[];
 
-  @ApiPropertyOptional({ description: 'Jumlah voucher yang akan digenerate (wajib jika tipe VOUCHER)', example: 100, required: false })
-  @ValidateIf(o => o.type === 'VOUCHER')
-  @IsInt()
-  @Min(1)
-  @IsNotEmpty({ message: 'Jumlah voucher harus diisi jika tipe diskon adalah VOUCHER' })
-  voucherQuantity?: number;
-  
-  @ApiPropertyOptional({ description: 'Prefix untuk kode voucher (opsional)', example: 'GAJIAN', required: false })
-  @IsString()
-  @IsOptional()
-  voucherCodePrefix?: string;
+  // --- REVISI: Kolom spesifik untuk tipe VOUCHER ---
 
-  @ApiPropertyOptional({ description: 'Batas penggunaan per kode voucher (opsional)', example: 1, required: false })
+  @ApiPropertyOptional({ description: 'Kode voucher unik (wajib jika tipe VOUCHER)', example: 'GAJIAN10' })
+  @ValidateIf(o => o.type === DiscountType.VOUCHER)
+  @IsString()
+  @IsNotEmpty({ message: 'Kode voucher harus diisi jika tipe diskon adalah VOUCHER' })
+  voucherCode?: string;
+
+  @ApiPropertyOptional({ description: 'Total kuota penggunaan voucher (opsional)', example: 100 })
+  @ValidateIf(o => o.type === DiscountType.VOUCHER)
   @IsInt()
   @Min(1)
   @IsOptional()
-  voucherMaxUses?: number;
+  maxUses?: number;
 }

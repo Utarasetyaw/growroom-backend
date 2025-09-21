@@ -46,19 +46,19 @@ enum DiscountValueType {
 // --- MODELS ---
 
 model User {
-  id                    Int            @id @default(autoincrement())
-  email                 String         @unique
+  id                    Int              @id @default(autoincrement())
+  email                 String           @unique
   name                  String
   password              String
-  role                  Role           @default(USER)
+  role                  Role             @default(USER)
   permissions           String[]
   phone                 String?
-  address               Json?          @default("{}")
-  socialMedia           Json           @default("{}")
-  createdAt             DateTime       @default(now())
-  updatedAt             DateTime       @updatedAt
-  conversationsStarted  Conversation[] @relation("UserConversations")
-  assignedConversations Conversation[] @relation("AdminAssignments")
+  address               Json?            @default("{}")
+  socialMedia           Json             @default("{}")
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  conversationsStarted  Conversation[]   @relation("UserConversations")
+  assignedConversations Conversation[]   @relation("AdminAssignments")
   sentMessages          ChatMessage[]
   orders                Order[]
   cart                  Cart?
@@ -214,25 +214,25 @@ model OrderItem {
 }
 
 model GeneralSetting {
-  id               Int      @id @default(1)
-  shopName         Json?
-  shopDescription  Json?
-  logoUrl          String?
-  faviconUrl       String?
-  bannerImageUrl   String?
-  bannerVideoUrl   String?
-  address          String?  @db.Text
-  email            String?
-  phoneNumber      String?
-  socialMedia      Json     @default("{}")
-  aboutItems       Json?    @default("[]")
-  faqs             Json?    @default("[]")
-  shippingPolicy   Json?    @default("[]")
-  telegramBotToken String?
-  telegramChatId   String?
-  shippingMode     String   @default("manual")
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                Int      @id @default(1)
+  shopName          Json?
+  shopDescription   Json?
+  logoUrl           String?
+  faviconUrl        String?
+  bannerImageUrl    String?
+  bannerVideoUrl    String?
+  address           String?  @db.Text
+  email             String?
+  phoneNumber       String?
+  socialMedia       Json     @default("{}")
+  aboutItems        Json?    @default("[]")
+  faqs              Json?    @default("[]")
+  shippingPolicy    Json?    @default("[]")
+  telegramBotToken  String?
+  telegramChatId    String?
+  shippingMode      String   @default("manual")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }
 
 // --- DISCOUNT MODELS ---
@@ -243,42 +243,32 @@ model Discount {
   description    String?
   type           DiscountType
   discountType   DiscountValueType
-  value           Json     
+  value          Json
   startDate      DateTime
   endDate        DateTime
   isActive       Boolean           @default(true)
+  voucherCode    String?           @unique
+  maxUses        Int?
+  usesCount      Int               @default(0)
   maxUsesPerUser Int?
   products       Product[]
-  vouchers       Voucher[]
+  voucherUsages  VoucherUsage[]
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 }
 
-model Voucher {
-  id         Int            @id @default(autoincrement())
-  code       String         @unique
-  maxUses    Int?
-  usesCount  Int            @default(0)
-  isActive   Boolean        @default(true)
-  discount   Discount       @relation(fields: [discountId], references: [id])
-  discountId Int
-  usages     VoucherUsage[]
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
-}
-
 model VoucherUsage {
-  id        Int      @id @default(autoincrement())
-  usedAt    DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id])
-  userId    Int
-  voucher   Voucher  @relation(fields: [voucherId], references: [id])
-  voucherId Int
-  order     Order    @relation(fields: [orderId], references: [id])
-  orderId   Int      @unique
+  id         Int      @id @default(autoincrement())
+  usedAt     DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id])
+  userId     Int
+  discount   Discount @relation(fields: [discountId], references: [id], onDelete: Cascade)
+  discountId Int
+  order      Order    @relation(fields: [orderId], references: [id])
+  orderId    Int      @unique
 
   @@index([userId])
-  @@index([voucherId])
+  @@index([discountId])
 }
 
 
@@ -337,15 +327,15 @@ model ShippingRatePrice {
 }
 
 model Conversation {
-  id           Int           @id @default(autoincrement())
-  status       String        @default("OPEN")
-  user         User          @relation("UserConversations", fields: [userId], references: [id])
-  userId       Int
-  assignedTo   User?         @relation("AdminAssignments", fields: [assignedToId], references: [id])
-  assignedToId Int?
-  messages     ChatMessage[]
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  id             Int           @id @default(autoincrement())
+  status         String        @default("OPEN")
+  user           User          @relation("UserConversations", fields: [userId], references: [id])
+  userId         Int
+  assignedTo     User?         @relation("AdminAssignments", fields: [assignedToId], references: [id])
+  assignedToId   Int?
+  messages       ChatMessage[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 }
 
 model ChatMessage {

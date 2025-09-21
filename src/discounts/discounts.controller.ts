@@ -1,3 +1,5 @@
+// File: src/discounts/discounts.controller.ts
+
 import {
   Controller, Get, Post, Body, Patch, Param, Delete, ParseIntPipe, UseGuards, ValidationPipe, Logger
 } from '@nestjs/common';
@@ -19,6 +21,7 @@ export class DiscountsController {
 
   constructor(private readonly discountsService: DiscountsService) {}
 
+  // Endpoint ini sudah benar karena menggunakan CreateDiscountDto yang telah direvisi.
   @Post()
   @Roles(Role.OWNER, Role.ADMIN)
   @ApiOperation({ summary: 'Membuat diskon/promo baru' })
@@ -27,6 +30,7 @@ export class DiscountsController {
     return this.discountsService.create(createDiscountDto);
   }
 
+  // Endpoint ini tidak memerlukan perubahan.
   @Get()
   @Roles(Role.OWNER, Role.ADMIN)
   @ApiOperation({ summary: 'Mendapatkan semua daftar diskon/promo' })
@@ -34,6 +38,7 @@ export class DiscountsController {
     return this.discountsService.findAll();
   }
 
+  // Endpoint ini tidak memerlukan perubahan.
   @Get(':id')
   @Roles(Role.OWNER, Role.ADMIN)
   @ApiOperation({ summary: 'Mendapatkan detail satu diskon/promo' })
@@ -41,6 +46,7 @@ export class DiscountsController {
     return this.discountsService.findOne(id);
   }
 
+  // Endpoint ini sudah benar karena menggunakan UpdateDiscountDto yang mewarisi revisi.
   @Patch(':id')
   @Roles(Role.OWNER, Role.ADMIN)
   @ApiOperation({ summary: 'Memperbarui data diskon/promo' })
@@ -48,6 +54,7 @@ export class DiscountsController {
     return this.discountsService.update(id, updateDiscountDto);
   }
 
+  // Endpoint ini tidak memerlukan perubahan.
   @Delete(':id')
   @Roles(Role.OWNER, Role.ADMIN)
   @ApiOperation({ summary: 'Menghapus diskon/promo' })

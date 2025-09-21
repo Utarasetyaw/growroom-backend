@@ -1,4 +1,5 @@
-// src/currencies/currencies.service.ts
+// File: src/currencies/currencies.service.ts
+
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateCurrencyDto } from './dto/update-currency.dto';
@@ -7,33 +8,47 @@ import { UpdateCurrencyDto } from './dto/update-currency.dto';
 export class CurrenciesService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll() {
+  findAll() {
     return this.prisma.currency.findMany({
       orderBy: { isDefault: 'desc' }
     });
   }
-
-  async update(id: number, data: UpdateCurrencyDto) {
-    // Logic: pastikan hanya isActive/isDefault yang boleh diupdate
-    const allowed = ['isActive', 'isDefault'];
-    Object.keys(data).forEach(key => {
-      if (!allowed.includes(key)) delete data[key];
-    });
-
-    if (data.isDefault === true) {
-      // Set semua lain jadi false dulu
-      await this.prisma.currency.updateMany({
-        where: { id: { not: id } },
-        data: { isDefault: false }
-      });
-    }
-    return this.prisma.currency.update({ where: { id }, data });
-  }
-
-  async findAllActive() {
+  
+  findAllActive() {
     return this.prisma.currency.findMany({
       where: { isActive: true },
-      orderBy: { isDefault: 'desc' }, // Default currency akan muncul pertama
+      orderBy: { isDefault: 'desc' },
+    });
+  }
+
+  async update(id: number, data: UpdateCurrencyDto) {
+    // REVISI 1: Cek dulu apakah mata uangnya ada
+    const currencyExists = await this.prisma.currency.findUnique({ where: { id } });
+    if (!currencyExists) {
+      throw new NotFoundException(`Mata uang dengan ID ${id} tidak ditemukan.`);
+    }
+
+    // REVISI 2: Gunakan Transaksi untuk memastikan konsistensi data
+    // Ini mencegah bug jika ada dua permintaan yang mengubah default secara bersamaan.
+    return this.prisma.$transaction(async (tx) => {
+      if (data.isDefault === true) {
+        // Set semua mata uang lain menjadi non-default
+        await tx.currency.updateMany({
+          where: { id: { not: id } },
+          data: { isDefault: false },
+        });
+      }
+
+      // Update mata uang yang dituju
+      const updatedCurrency = await tx.currency.update({
+        where: { id },
+        data: {
+          isActive: data.isActive,
+          isDefault: data.isDefault,
+        },
+      });
+
+      return updatedCurrency;
     });
   }
 }

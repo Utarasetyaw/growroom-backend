@@ -1,3 +1,5 @@
+// File: src/discounts/discounts.module.ts
+
 import { Module } from '@nestjs/common';
 import { DiscountsService } from './discounts.service';
 import { DiscountsController } from './discounts.controller';
@@ -7,7 +9,6 @@ import { PrismaService } from '../prisma/prisma.service';
   imports: [],
   controllers: [DiscountsController],
   providers: [DiscountsService, PrismaService],
-  // --- TAMBAHKAN BARIS INI ---
-  exports: [DiscountsService], 
+  exports: [DiscountsService],
 })
 export class DiscountsModule {}
