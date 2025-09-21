@@ -6,6 +6,8 @@ import { MidtransModule } from '../midtrans/midtrans.module';
 import { PaypalModule } from '../paypal/paypal.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { PdfModule } from '../pdf/pdf.module';
+// --- 1. IMPORT DISCOUNTSMODULE ---
+import { DiscountsModule } from '../discounts/discounts.module';
 
 @Module({
   imports: [
@@ -13,10 +15,9 @@ import { PdfModule } from '../pdf/pdf.module';
     PdfModule,
     CartModule,
     MidtransModule,
-    // Gunakan forwardRef() untuk mengatasi circular dependency
-    // Ini memberitahu NestJS untuk me-resolve PaypalModule nanti,
-    // setelah semua modul lain dimuat.
     forwardRef(() => PaypalModule),
+    // --- 2. TAMBAHKAN DISCOUNTSMODULE DI SINI ---
+    DiscountsModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService],
