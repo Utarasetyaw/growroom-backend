@@ -8,6 +8,7 @@ import {
   Res,
   HttpCode,
   HttpStatus,
+  Logger, // <-- 1. Import Logger
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -27,7 +28,6 @@ import { Response } from 'express';
 import { SummaryResponseDto } from './dto/summary-response.dto';
 import { ChartResponseDto } from './dto/chart-response.dto';
 import { ExportEmailDto } from './dto/export-email.dto';
-// REVISI: ExportPdfDto tidak diperlukan lagi karena kita akan menggunakan Query Params
 
 @ApiTags('Finance & Reports')
 @ApiBearerAuth()
@@ -35,9 +35,10 @@ import { ExportEmailDto } from './dto/export-email.dto';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.OWNER, Role.ADMIN)
 export class FinanceController {
-  constructor(private readonly service: FinanceService) {}
+  // --- 2. Inisialisasi Logger ---
+  private readonly logger = new Logger(FinanceController.name);
 
-  // ... (endpoint summary/today, summary/week, summary/month tetap sama) ...
+  constructor(private readonly service: FinanceService) {}
 
   @Get('summary')
   @ApiOperation({ summary: 'Ringkasan keuangan untuk rentang waktu custom' })
@@ -46,6 +47,7 @@ export class FinanceController {
   @ApiResponse({ status: 200, type: SummaryResponseDto })
   @ApiBadRequestResponse({ description: 'Format tanggal tidak valid.' })
   summaryRange(@Query('start') start: string, @Query('end') end: string) {
+    this.logger.log(`Endpoint GET /finance/summary dipanggil dengan rentang: ${start} - ${end}`);
     return this.service.summaryRange(start, end);
   }
 
@@ -61,13 +63,10 @@ export class FinanceController {
     @Query('start') start: string,
     @Query('end') end: string,
   ) {
+    this.logger.log(`Endpoint GET /finance/chart dipanggil dengan mode: ${mode}, rentang: ${start} - ${end}`);
     return this.service.chart(mode, start, end);
   }
 
-  /**
-   * REVISI: Mengubah endpoint dari POST menjadi GET untuk mengikuti konvensi REST.
-   * Data 'start' dan 'end' sekarang diambil dari query parameter.
-   */
   @Get('export/pdf')
   @ApiOperation({ summary: 'Download laporan keuangan dalam format PDF' })
   @ApiQuery({ name: 'start', description: 'Tanggal mulai (YYYY-MM-DD)', type: String })
@@ -79,12 +78,15 @@ export class FinanceController {
     @Query('end') end: string,
     @Res() res: Response,
   ) {
+    this.logger.log(`Endpoint GET /finance/export/pdf dipanggil dengan rentang: ${start} - ${end}`);
     try {
       const pdfBuffer = await this.service.generatePdfReport(start, end);
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename=laporan-keuangan-${start}-sd-${end}.pdf`);
       res.send(pdfBuffer);
     } catch (error) {
+      // --- 3. Tambahkan Log Error ---
+      this.logger.error(`Gagal membuat PDF untuk rentang: ${start} - ${end}`, error.stack);
       res.status(error.status || 500).json({
         statusCode: error.status || 500,
         message: error.message || 'Gagal membuat file PDF laporan.',
@@ -93,12 +95,13 @@ export class FinanceController {
   }
 
   @Post('export/email')
-  @HttpCode(HttpStatus.CREATED) // REVISI: Menggunakan status 201 untuk aksi "kirim"
+  @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Generate laporan PDF dan kirim ke email' })
   @ApiBody({ type: ExportEmailDto })
   @ApiResponse({ status: 201, description: 'Laporan berhasil dikirim ke email.' })
   @ApiBadRequestResponse({ description: 'Format tanggal atau email tidak valid.' })
   async exportPdfEmail(@Body() body: ExportEmailDto) {
+    this.logger.log(`Endpoint POST /finance/export/email dipanggil untuk email: ${body.email}`);
     return this.service.exportPdfReportAndSendEmail(body.start, body.end, body.email);
   }
 }
