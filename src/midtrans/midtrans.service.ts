@@ -1,5 +1,3 @@
-// src/midtrans/midtrans.service.ts
-
 import {
   Injectable,
   BadRequestException,
@@ -12,8 +10,8 @@ import { OrderStatus, PaymentStatus, Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
 import { MidtransNotificationDto } from './dto/midtrans-notification.dto';
 import axios from 'axios';
+import { DiscountsService } from '../discounts/discounts.service'; // <-- 1. IMPORT DISCOUNTS SERVICE
 
-// Definisikan interface untuk kejelasan tipe data
 interface CustomerDetails {
   name: string;
   email: string;
@@ -30,17 +28,11 @@ interface ItemDetails {
 export class MidtransService {
   private readonly logger = new Logger(MidtransService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private discountsService: DiscountsService, // <-- 2. INJECT DISCOUNTS SERVICE
+  ) {}
 
-  /**
-   * FUNGSI BARU: Membuat transaksi Snap berdasarkan data mentah.
-   * Ini adalah satu-satunya fungsi yang akan dipanggil oleh OrdersService untuk membuat transaksi baru.
-   * @param generatedOrderId - ID unik yang kita buat untuk transaksi ini (e.g., 'ORDER-123-TIMESTAMP').
-   * @param total - Total harga yang harus dibayar.
-   * @param items - Daftar item dalam keranjang.
-   * @param customer - Detail pelanggan.
-   * @param paymentMethodId - ID metode pembayaran untuk mengambil config (serverKey, dll).
-   */
   async createTransaction(
     generatedOrderId: string,
     total: number,
@@ -81,7 +73,7 @@ export class MidtransService {
         email: customer.email,
       },
       callbacks: {
-        finish: config.frontendUrl, // URL redirect setelah pembayaran selesai/gagal/pending
+        finish: config.frontendUrl,
       },
     };
     
@@ -93,7 +85,6 @@ export class MidtransService {
           Authorization: `Basic ${authString}`,
         },
       });
-      // Kembalikan token dan URL yang dibutuhkan frontend
       return {
         snapToken: response.data.token,
         redirectUrl: response.data.redirect_url,
@@ -105,23 +96,17 @@ export class MidtransService {
     }
   }
 
-  /**
-   * Menangani Notifikasi Pembayaran dari Midtrans (Webhook).
-   * @param payload Data notifikasi yang sudah divalidasi oleh DTO.
-   */
   async handlePaymentNotification(payload: MidtransNotificationDto) {
     this.logger.log(`[Midtrans Webhook] Processing notification for Order ID: ${payload.order_id}`);
 
-    // Langkah 1: Verifikasi signature
     const serverKey = await this._getServerKeyForOrder(payload.order_id);
     if (!this._verifySignature(payload, serverKey)) {
       throw new ForbiddenException('Invalid signature');
     }
     this.logger.log(`[Midtrans Webhook] Signature is valid for Order ID: ${payload.order_id}.`);
 
-    // Langkah 2: Cari order di DB menggunakan `midtransOrderId`
     const order = await this.prisma.order.findUnique({
-      where: { midtransOrderId: payload.order_id }, // **PERUBAHAN PENTING**
+      where: { midtransOrderId: payload.order_id },
       include: { orderItems: true },
     });
 
@@ -130,14 +115,12 @@ export class MidtransService {
       return { message: `Order for ${payload.order_id} not found, but acknowledged.` };
     }
 
-    // Langkah 3: Pastikan order belum dalam status final
     const finalStatuses: PaymentStatus[] = [PaymentStatus.PAID, PaymentStatus.CANCELLED, PaymentStatus.REFUNDED];
     if (finalStatuses.includes(order.paymentStatus)) {
       this.logger.log(`[Midtrans Webhook] Order ${order.id} is already in a final state (${order.paymentStatus}). No action taken.`);
       return { message: 'Notification for an already finalized order received, no action taken.' };
     }
 
-    // Langkah 4: Proses status transaksi
     return this._processTransactionStatus(order, payload);
   }
 
@@ -149,10 +132,6 @@ export class MidtransService {
     return signature === payload.signature_key;
   }
 
-  /**
-   * REVISI: Mendapatkan Server Key dari order terkait untuk verifikasi signature.
-   * Mencari berdasarkan `midtransOrderId`.
-   */
   private async _getServerKeyForOrder(midtransOrderId: string): Promise<string> {
     const order = await this.prisma.order.findUnique({
         where: { midtransOrderId },
@@ -179,14 +158,22 @@ export class MidtransService {
 
     if (transactionStatus === 'settlement' || transactionStatus === 'capture') {
       updatePayload.paymentStatus = PaymentStatus.PAID;
-      updatePayload.orderStatus = OrderStatus.PROCESSING; // Ubah status order menjadi sedang diproses
+      updatePayload.orderStatus = OrderStatus.PROCESSING;
+      
+      await this.prisma.order.update({
+        where: { id: order.id },
+        data: updatePayload,
+      });
+
+      // --- 3. PANGGIL METHOD UNTUK MENANDAI VOUCHER SETELAH PEMBAYARAN SUKSES ---
+      await this.discountsService.markVoucherAsUsedForOrder(order.id, order.userId);
+
     } else if (['cancel', 'deny', 'expire'].includes(transactionStatus)) {
       updatePayload = {
         paymentStatus: PaymentStatus.CANCELLED,
         orderStatus: OrderStatus.CANCELLED,
       };
 
-      // Kembalikan stok jika pembayaran dibatalkan
       this.logger.log(`[Midtrans Webhook] Restoring stock for cancelled Order #${order.id}`);
       for (const item of order.orderItems) {
         if (item.productId) {
@@ -196,16 +183,17 @@ export class MidtransService {
           });
         }
       }
+
+      await this.prisma.order.update({
+        where: { id: order.id },
+        data: updatePayload,
+      });
+
     } else {
       this.logger.log(`[Midtrans Webhook] Unhandled status (${transactionStatus}) for ${order_id}. No action taken.`);
       return { message: 'Notification for pending status received, no action taken.' };
     }
     
-    await this.prisma.order.update({
-      where: { id: order.id },
-      data: updatePayload,
-    });
-
     this.logger.log(`[Midtrans Webhook] SUCCESS: Order #${order.id} status updated.`);
     return { message: 'Payment notification processed successfully' };
   }

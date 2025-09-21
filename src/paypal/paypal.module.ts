@@ -1,20 +1,19 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { PaypalController } from './paypal.controller';
 import { PaypalService } from './paypal.service';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaModule } from '../prisma/prisma.module'; // <-- 1. Gunakan PrismaModule
 import { OrdersModule } from '../orders/orders.module';
+import { DiscountsModule } from '../discounts/discounts.module'; // <-- 2. Import DiscountsModule
 
 @Module({
   imports: [
-    // Gunakan forwardRef() di sini juga untuk mengatasi circular dependency
-    // PaypalModule membutuhkan OrdersModule (dan servicenya),
-    // dan sebaliknya.
+    PrismaModule, // <-- 3. Import PrismaModule di sini
     forwardRef(() => OrdersModule),
+    DiscountsModule, // <-- 4. Tambahkan DiscountsModule di sini
   ],
   controllers: [PaypalController],
-  // PrismaService tidak perlu diimpor dari PrismaModule karena sudah disediakan di sini.
-  // Jika Anda memiliki PrismaModule yang mengekspor PrismaService, Anda bisa mengimpornya.
-  providers: [PaypalService, PrismaService],
+  // Hapus PrismaService dari providers karena sudah di-supply oleh PrismaModule
+  providers: [PaypalService], 
   exports: [PaypalService],
 })
 export class PaypalModule {}

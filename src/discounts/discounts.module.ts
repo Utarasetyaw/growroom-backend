@@ -1,14 +1,17 @@
-// File: src/discounts/discounts.module.ts
-
 import { Module } from '@nestjs/common';
 import { DiscountsService } from './discounts.service';
 import { DiscountsController } from './discounts.controller';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaModule } from '../prisma/prisma.module'; // <-- 1. Import PrismaModule
 
 @Module({
-  imports: [],
+  imports: [
+    PrismaModule, // <-- 2. Daftarkan PrismaModule di sini
+  ],
   controllers: [DiscountsController],
-  providers: [DiscountsService, PrismaService],
-  exports: [DiscountsService],
+  providers: [
+    DiscountsService, 
+    // PrismaService dihapus dari sini karena sudah disediakan oleh PrismaModule
+  ],
+  exports: [DiscountsService], // Ini sudah benar
 })
 export class DiscountsModule {}

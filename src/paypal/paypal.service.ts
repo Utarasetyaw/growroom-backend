@@ -13,9 +13,8 @@ import { PaymentStatus, OrderStatus, Prisma } from '@prisma/client';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { PaypalWebhookDto } from './dto/paypal-webhook.dto';
-// CreateOrderDto tidak lagi dibutuhkan di sini
-// import { CreateOrderDto } from '../orders/dto/create-order.dto';
 import { OrdersService } from '../orders/orders.service';
+import { DiscountsService } from '../discounts/discounts.service'; // <-- 1. IMPORT DISCOUNTS SERVICE
 
 @Injectable()
 export class PaypalService {
@@ -25,6 +24,7 @@ export class PaypalService {
     private prisma: PrismaService,
     @Inject(forwardRef(() => OrdersService))
     private ordersService: OrdersService,
+    private discountsService: DiscountsService, // <-- 2. INJECT DISCOUNTS SERVICE
   ) {}
 
   private async getPayPalClient(paymentMethodId: number) {
@@ -48,7 +48,6 @@ export class PaypalService {
     return new paypal.core.PayPalHttpClient(environment);
   }
 
-  // Fungsi ini tidak berubah
   async createPaypalOrder(
     total: number,
     currencyCode: string,
@@ -82,17 +81,13 @@ export class PaypalService {
     }
   }
 
-  /**
-   * REVISI TOTAL: Fungsi ini sekarang melakukan capture dan mengupdate order internal.
-   */
   async capturePaymentAndUpdateOrder(paypalOrderId: string, userId: number) {
     this.logger.log(`[PayPal] Menangkap pembayaran dan mengupdate order internal untuk PayPal ID: ${paypalOrderId}`);
     
-    // 1. Cari order yang sesuai di database kita.
     const order = await this.prisma.order.findFirst({
       where: {
         paypalOrderId: paypalOrderId,
-        userId: userId, // Pastikan user adalah pemilik order ini
+        userId: userId,
       },
     });
 
@@ -113,13 +108,11 @@ export class PaypalService {
     request.requestBody({});
 
     try {
-      // 2. Lakukan permintaan 'capture' ke PayPal.
       const captureResponse = await client.execute(request);
       const captureResult = captureResponse.result;
 
       if (captureResult.status !== 'COMPLETED') {
         this.logger.error(`[PayPal] Capture untuk ${paypalOrderId} tidak selesai. Status: ${captureResult.status}`);
-        // Opsional: Update status order menjadi FAILED
         await this.prisma.order.update({
             where: { id: order.id },
             data: { paymentStatus: PaymentStatus.FAILED }
@@ -129,18 +122,19 @@ export class PaypalService {
 
       this.logger.log(`[PayPal] Capture untuk ${paypalOrderId} SELESAI. Mengupdate order internal #${order.id}...`);
 
-      // 3. Update order internal kita dengan status baru dan detail pembayaran.
       await this.prisma.order.update({
           where: { id: order.id },
           data: {
               paymentStatus: PaymentStatus.PAID,
               orderStatus: OrderStatus.PROCESSING,
               paymentDetails: captureResult as Prisma.JsonObject,
-              paymentDueDate: null, // Pembayaran lunas, tidak ada lagi tanggal jatuh tempo.
+              paymentDueDate: null,
           }
       });
 
-      // 4. Ambil data order final yang sudah terupdate untuk dikembalikan ke user.
+      // --- 3. PANGGIL METHOD UNTUK MENANDAI VOUCHER TELAH DIGUNAKAN ---
+      await this.discountsService.markVoucherAsUsedForOrder(order.id, order.userId);
+
       return this.ordersService.findOne(order.id, userId);
 
     } catch (err) {
@@ -155,7 +149,6 @@ export class PaypalService {
     }
   }
 
-  // Fungsi webhook tidak berubah
   async handleWebhook(headers: any, body: any) {
     this.logger.log('[PayPal Webhook] Menerima event.');
     const paymentMethod = await this.prisma.paymentMethod.findFirst({ where: { code: 'paypal', isActive: true } });
@@ -194,6 +187,10 @@ export class PaypalService {
           orderStatus: OrderStatus.PROCESSING,
         },
       });
+      
+      // --- 3. PANGGIL METHOD UNTUK MENANDAI VOUCHER (SEBAGAI FALLBACK) ---
+      await this.discountsService.markVoucherAsUsedForOrder(order.id, order.userId);
+      
       this.logger.log(`[PayPal Webhook] Mengkonfirmasi order internal #${order.id} menjadi LUNAS via webhook.`);
     } else {
         this.logger.log(`[PayPal Webhook] Tipe event tidak ditangani: ${eventType}.`);

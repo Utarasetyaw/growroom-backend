@@ -1,14 +1,21 @@
-// File: src/discounts/dto/validate-voucher.dto.ts
-
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsArray, ArrayMinSize, ValidateNested, IsInt } from 'class-validator';
+import { IsString, IsNotEmpty, IsArray, ArrayMinSize, ValidateNested, IsInt, IsOptional, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 
 // DTO internal untuk merepresentasikan satu item di keranjang
 class CartItemDto {
+  @ApiProperty({ description: 'ID produk di keranjang', example: 1 })
   @IsInt()
   @IsNotEmpty()
   productId: number;
+
+  // --- TAMBAHKAN properti quantity (opsional) ---
+  // Ini untuk mencegah error validasi saat data dikirim dari service lain
+  @ApiProperty({ description: 'Kuantitas item', example: 1, required: false })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  quantity?: number;
 }
 
 // DTO utama untuk validasi voucher

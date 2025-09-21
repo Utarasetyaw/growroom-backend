@@ -21,7 +21,6 @@ import { PaypalService } from '../paypal/paypal.service';
 import { PdfService } from '../pdf/pdf.service';
 import { DiscountsService } from '../discounts/discounts.service';
 
-// --- TAMBAHAN: Object `include` yang akan digunakan berulang kali ---
 const orderWithDetailsInclude = Prisma.validator<Prisma.OrderInclude>()({
   user: true,
   orderItems: {
@@ -35,7 +34,6 @@ const orderWithDetailsInclude = Prisma.validator<Prisma.OrderInclude>()({
   appliedDiscounts: true,
 });
 
-// Tipe `OrderWithDetails` sekarang menggunakan object di atas untuk memastikan konsistensi
 type OrderWithDetails = Prisma.OrderGetPayload<{
   include: typeof orderWithDetailsInclude;
 }>;
@@ -87,7 +85,6 @@ export class OrdersService {
 
     const totals = await this._calculateTotals(userId, dto);
 
-    // Ganti `totals.total` menjadi `totals.grandTotal` di semua pemanggilan
     switch (paymentMethod.code) {
       case 'midtrans': {
         try {
@@ -201,6 +198,14 @@ export class OrdersService {
     const shouldReturnStock = wasStockUsed && isStockReturning;
 
     await this.prisma.$transaction(async (tx) => {
+      // --- TAMBAHAN: Logika untuk menandai voucher setelah dibayar (manual) ---
+      if (paymentStatus === PaymentStatus.PAID && existingOrder.paymentStatus !== PaymentStatus.PAID) {
+        this.logger.log(`Order #${id} status pembayaran diubah menjadi PAID. Menjalankan logika penggunaan voucher...`);
+        // Memanggil service diskon di dalam transaksi yang sama untuk menjamin konsistensi data
+        await this.discountsService.markVoucherAsUsedForOrder(id, existingOrder.userId, tx);
+      }
+      // --- BATAS TAMBAHAN ---
+
       await tx.order.update({
         where: { id },
         data: { paymentStatus, orderStatus, trackingNumber },
@@ -269,26 +274,20 @@ export class OrdersService {
             }),
           },
         },
-        include: orderWithDetailsInclude, // <-- GUNAKAN OBJECT KONSTAN
+        include: orderWithDetailsInclude,
       });
 
       for (const item of orderItems) {
         const product = productMap.get(item.productId);
         const saleDiscount = product?.discounts[0];
         if (saleDiscount) {
-          let itemDiscountAmount = 0;
-          if (saleDiscount.discountType === DiscountValueType.FIXED) {
-             itemDiscountAmount = (saleDiscount.value as any)[currencyCode] || 0;
-          } else {
-             itemDiscountAmount = product.prices[0].price * (Number(saleDiscount.value) / 100);
-          }
           await tx.appliedDiscount.create({
             data: {
               orderId: newOrder.id,
               discountId: saleDiscount.id,
               discountName: saleDiscount.name,
               discountType: DiscountType.SALE,
-              amount: itemDiscountAmount * item.qty,
+              amount: (product.prices[0].price * (Number(saleDiscount.value) / 100)) * item.qty,
               currencyCode: currencyCode,
             }
           });
@@ -306,17 +305,9 @@ export class OrdersService {
             currencyCode: currencyCode,
           }
         });
-        await tx.discount.update({
-          where: { id: validatedVoucher.discount.id },
-          data: { usesCount: { increment: 1 } },
-        });
-        await tx.voucherUsage.create({
-          data: {
-            userId: userId,
-            discountId: validatedVoucher.discount.id,
-            orderId: newOrder.id,
-          }
-        });
+
+        // --- HAPUS LOGIKA PENGGUNAAN VOUCHER DARI SINI ---
+        // Logika ini sekarang akan dipanggil hanya setelah pembayaran berhasil.
       }
 
       await this.cartService.clearCart(userId);
@@ -431,7 +422,7 @@ export class OrdersService {
       this.prisma.order.findMany({
         skip,
         take: limit,
-        include: orderWithDetailsInclude, // <-- GUNAKAN OBJECT KONSTAN
+        include: orderWithDetailsInclude,
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.order.count(),
@@ -443,7 +434,7 @@ export class OrdersService {
   async findUserOrders(userId: number) {
     const orders = await this.prisma.order.findMany({
       where: { userId },
-      include: orderWithDetailsInclude, // <-- GUNAKAN OBJECT KONSTAN
+      include: orderWithDetailsInclude,
       orderBy: { createdAt: 'desc' },
     });
     return orders.map(mapOrderToDto).filter((o): o is OrderResponseDto => o !== null);
@@ -452,7 +443,7 @@ export class OrdersService {
   async findOne(id: number, userId?: number) {
     const order = await this.prisma.order.findUnique({
       where: { id },
-      include: orderWithDetailsInclude, // <-- GUNAKAN OBJECT KONSTAN
+      include: orderWithDetailsInclude,
     });
     if (!order) throw new NotFoundException('Order tidak ditemukan.');
     if (userId && order.userId !== userId) throw new ForbiddenException('Akses ditolak.');
@@ -474,7 +465,7 @@ export class OrdersService {
     
     const order = await this.prisma.order.findFirst({
       where: { id: orderId, userId },
-      include: orderWithDetailsInclude, // <-- GUNAKAN OBJECT KONSTAN
+      include: orderWithDetailsInclude,
     });
 
     if (!order) {

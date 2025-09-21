@@ -1,10 +1,8 @@
-// File: src/discounts/discounts.service.ts
-
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateDiscountDto } from './dto/create-discount.dto';
 import { UpdateDiscountDto } from './dto/update-discount.dto';
-import { DiscountType, DiscountValueType } from '@prisma/client';
+import { DiscountType, DiscountValueType, Prisma } from '@prisma/client';
 import { ValidateVoucherDto } from './dto/validate-voucher.dto';
 
 @Injectable()
@@ -221,6 +219,52 @@ export class DiscountsService {
     return this.prisma.discount.delete({
       where: { id },
     });
+  }
+
+  async markVoucherAsUsedForOrder(
+    orderId: number,
+    userId: number,
+    tx?: Prisma.TransactionClient
+  ) {
+    const prismaClient = tx || this.prisma;
+    this.logger.log(`Mencoba menandai voucher untuk Order #${orderId} sebagai terpakai...`);
+
+    const existingUsage = await prismaClient.voucherUsage.findUnique({
+      where: { orderId },
+    });
+
+    if (existingUsage) {
+      this.logger.warn(`Voucher untuk Order #${orderId} sudah pernah ditandai. Proses dilewati.`);
+      return;
+    }
+
+    const appliedVoucher = await prismaClient.appliedDiscount.findFirst({
+      where: {
+        orderId: orderId,
+        discountType: DiscountType.VOUCHER,
+      },
+    });
+
+    if (appliedVoucher) {
+      this.logger.log(`Voucher "${appliedVoucher.discountName}" ditemukan pada Order #${orderId}. Memproses...`);
+      
+      await prismaClient.discount.update({
+        where: { id: appliedVoucher.discountId },
+        data: { usesCount: { increment: 1 } },
+      });
+
+      await prismaClient.voucherUsage.create({
+        data: {
+          userId: userId,
+          discountId: appliedVoucher.discountId,
+          orderId: orderId,
+        },
+      });
+
+      this.logger.log(`Voucher untuk Order #${orderId} berhasil ditandai sebagai terpakai.`);
+    } else {
+      this.logger.log(`Tidak ada voucher yang diterapkan pada Order #${orderId}. Tidak ada tindakan.`);
+    }
   }
 
   async validateVoucher(userId: number, dto: ValidateVoucherDto) {

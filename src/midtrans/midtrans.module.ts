@@ -1,13 +1,16 @@
-// src/midtrans/midtrans.module.ts
-
 import { Module } from '@nestjs/common';
-import { MidtransController } from './midtrans.controller';
 import { MidtransService } from './midtrans.service';
-import { PrismaService } from '../prisma/prisma.service';
+import { MidtransController } from './midtrans.controller';
+import { PrismaModule } from '../prisma/prisma.module';
+import { DiscountsModule } from '../discounts/discounts.module'; // <-- TAMBAHKAN IMPORT INI
 
 @Module({
+  imports: [
+    PrismaModule,
+    DiscountsModule, // <-- TAMBAHKAN DI SINI
+  ],
   controllers: [MidtransController],
-  providers: [MidtransService, PrismaService],
-  exports: [MidtransService], 
+  providers: [MidtransService],
+  exports: [MidtransService],
 })
 export class MidtransModule {}
