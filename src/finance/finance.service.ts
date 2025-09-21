@@ -85,7 +85,7 @@ export class FinanceService {
     const data = await this.prisma.$queryRawUnsafe<any[]>(`
       SELECT
         TO_CHAR("createdAt", '${mode === 'day' ? 'YYYY-MM-DD' : mode === 'week' ? 'IYYY-IW' : 'YYYY-MM'}') as label,
-        SUM("total") as omset,
+        COALESCE(SUM("total"), 0) as omset,
         COUNT(*) as count
       FROM "Order"
       WHERE "createdAt" >= $1 AND "createdAt" <= $2 AND "paymentStatus" = 'PAID'
