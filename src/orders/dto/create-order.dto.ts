@@ -54,4 +54,10 @@ export class CreateOrderDto {
   @IsOptional()
   @IsInt()
   shippingRateId?: number;
+
+  // --- TAMBAHAN ---
+  @ApiPropertyOptional({ description: 'Kode voucher yang ingin digunakan (jika ada).', example: 'HEMAT10' })
+  @IsOptional()
+  @IsString()
+  voucherCode?: string;
 }

@@ -46,19 +46,19 @@ enum DiscountValueType {
 // --- MODELS ---
 
 model User {
-  id                    Int              @id @default(autoincrement())
-  email                 String           @unique
+  id                    Int            @id @default(autoincrement())
+  email                 String         @unique
   name                  String
   password              String
-  role                  Role             @default(USER)
+  role                  Role           @default(USER)
   permissions           String[]
   phone                 String?
-  address               Json?            @default("{}")
-  socialMedia           Json             @default("{}")
-  createdAt             DateTime         @default(now())
-  updatedAt             DateTime         @updatedAt
-  conversationsStarted  Conversation[]   @relation("UserConversations")
-  assignedConversations Conversation[]   @relation("AdminAssignments")
+  address               Json?          @default("{}")
+  socialMedia           Json           @default("{}")
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  conversationsStarted  Conversation[] @relation("UserConversations")
+  assignedConversations Conversation[] @relation("AdminAssignments")
   sentMessages          ChatMessage[]
   orders                Order[]
   cart                  Cart?
@@ -76,17 +76,18 @@ model Language {
 }
 
 model Currency {
-  id                 Int                 @id @default(autoincrement())
-  name               String
-  code               String              @unique
-  symbol             String
-  isActive           Boolean             @default(true)
-  isDefault          Boolean             @default(false)
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  productPrices      ProductPrice[]
-  shippingZonePrices ShippingZonePrice[]
-  shippingRatePrices ShippingRatePrice[]
+  id                   Int                 @id @default(autoincrement())
+  name                 String
+  code                 String              @unique
+  symbol               String
+  isActive             Boolean             @default(true)
+  isDefault            Boolean             @default(false)
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  productPrices        ProductPrice[]
+  shippingZonePrices   ShippingZonePrice[]
+  shippingRatePrices   ShippingRatePrice[]
+  // appliedDiscounts     AppliedDiscount[] // Tidak perlu, karena sudah ada currencyCode di AppliedDiscount
 }
 
 model Category {
@@ -170,30 +171,39 @@ model PaymentMethod {
 }
 
 model Order {
-  id              Int           @id @default(autoincrement())
-  user            User          @relation(fields: [userId], references: [id])
-  userId          Int
-  address         String
-  shippingCost    Float
-  subtotal        Float
-  total           Float
-  paymentStatus   PaymentStatus @default(PENDING_PAYMENT)
-  orderStatus     OrderStatus   @default(PENDING)
-  paymentMethod   PaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
-  paymentMethodId Int?
-  orderItems      OrderItem[]
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  paymentDueDate  DateTime?
-  trackingNumber  String?
-  currencyCode    String        @default("IDR")
-  paymentDetails  Json?
-  midtransOrderId String?       @unique
-  paypalOrderId   String?       @unique
-  voucherUsage    VoucherUsage?
+  id                    Int             @id @default(autoincrement())
+  user                  User            @relation(fields: [userId], references: [id])
+  userId                Int
+  address               String
+  shippingCost          Float
+  subtotal              Float
+  
+  // --- MODIFIKASI: Penambahan field untuk rekap diskon ---
+  saleDiscountAmount    Float           @default(0)
+  voucherDiscountAmount Float           @default(0)
+  
+  total                 Float
+  paymentStatus         PaymentStatus   @default(PENDING_PAYMENT)
+  orderStatus           OrderStatus     @default(PENDING)
+  paymentMethod         PaymentMethod?  @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+  paymentMethodId       Int?
+  orderItems            OrderItem[]
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  paymentDueDate        DateTime?
+  trackingNumber        String?
+  currencyCode          String          @default("IDR")
+  paymentDetails        Json?
+  midtransOrderId       String?         @unique
+  paypalOrderId         String?         @unique
+  voucherUsage          VoucherUsage?
+
+  // --- MODIFIKASI: Relasi ke tabel pencatatan diskon ---
+  appliedDiscounts      AppliedDiscount[]
 
   @@index([userId])
   @@index([paymentMethodId])
+  @@map("orders") // Menambahkan map jika nama tabel berbeda
 }
 
 model OrderItem {
@@ -214,25 +224,25 @@ model OrderItem {
 }
 
 model GeneralSetting {
-  id                Int      @id @default(1)
-  shopName          Json?
-  shopDescription   Json?
-  logoUrl           String?
-  faviconUrl        String?
-  bannerImageUrl    String?
-  bannerVideoUrl    String?
-  address           String?  @db.Text
-  email             String?
-  phoneNumber       String?
-  socialMedia       Json     @default("{}")
-  aboutItems        Json?    @default("[]")
-  faqs              Json?    @default("[]")
-  shippingPolicy    Json?    @default("[]")
-  telegramBotToken  String?
-  telegramChatId    String?
-  shippingMode      String   @default("manual")
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id               Int      @id @default(1)
+  shopName         Json?
+  shopDescription  Json?
+  logoUrl          String?
+  faviconUrl       String?
+  bannerImageUrl   String?
+  bannerVideoUrl   String?
+  address          String?  @db.Text
+  email            String?
+  phoneNumber      String?
+  socialMedia      Json     @default("{}")
+  aboutItems       Json?    @default("[]")
+  faqs             Json?    @default("[]")
+  shippingPolicy   Json?    @default("[]")
+  telegramBotToken String?
+  telegramChatId   String?
+  shippingMode     String   @default("manual")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
 
 // --- DISCOUNT MODELS ---
@@ -255,6 +265,9 @@ model Discount {
   voucherUsages  VoucherUsage[]
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
+
+  // --- MODIFIKASI: Relasi ke tabel pencatatan diskon ---
+  appliedOnOrders AppliedDiscount[]
 }
 
 model VoucherUsage {
@@ -269,6 +282,23 @@ model VoucherUsage {
 
   @@index([userId])
   @@index([discountId])
+}
+
+// --- MODEL BARU: Untuk mencatat diskon yang diterapkan pada order ---
+model AppliedDiscount {
+  id           Int          @id @default(autoincrement())
+  orderId      Int
+  discountId   Int
+  discountName String       // Snapshot nama diskon saat digunakan
+  discountType DiscountType   // Snapshot tipe diskon (SALE atau VOUCHER)
+  amount       Float        // Jumlah potongan harga yang diberikan
+  currencyCode String       // Mata uang dari potongan harga
+
+  // Relasi
+  order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  discount     Discount @relation(fields: [discountId], references: [id], onDelete: Restrict)
+
+  @@map("applied_discounts")
 }
 
 
@@ -327,15 +357,15 @@ model ShippingRatePrice {
 }
 
 model Conversation {
-  id             Int           @id @default(autoincrement())
-  status         String        @default("OPEN")
-  user           User          @relation("UserConversations", fields: [userId], references: [id])
-  userId         Int
-  assignedTo     User?         @relation("AdminAssignments", fields: [assignedToId], references: [id])
-  assignedToId   Int?
-  messages       ChatMessage[]
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  id           Int           @id @default(autoincrement())
+  status       String        @default("OPEN")
+  user         User          @relation("UserConversations", fields: [userId], references: [id])
+  userId       Int
+  assignedTo   User?         @relation("AdminAssignments", fields: [assignedToId], references: [id])
+  assignedToId Int?
+  messages     ChatMessage[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 }
 
 model ChatMessage {

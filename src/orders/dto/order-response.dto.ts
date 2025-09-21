@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { OrderStatus, PaymentStatus } from '@prisma/client';
+import { OrderStatus, PaymentStatus, DiscountType } from '@prisma/client';
 
 // DTO khusus untuk menangani nama dalam berbagai bahasa
 class MultiLanguageNameDto {
@@ -41,9 +41,6 @@ class PaymentMethodInOrderDto {
 
   @ApiProperty({ example: 'bank_transfer' })
   code: string;
-
-  // Properti 'config' yang sensitif DIHAPUS dari DTO.
-  // Data ini tidak seharusnya pernah dikirim ke client.
 }
 
 // DTO untuk setiap item dalam pesanan
@@ -85,6 +82,19 @@ class OrderItemInOrderDto {
   productImage?: string;
 }
 
+// --- TAMBAHAN: DTO untuk menampilkan detail diskon yang diterapkan ---
+class AppliedDiscountDto {
+  @ApiProperty({ example: 'Diskon Kilat Akhir Pekan' })
+  discountName: string;
+
+  @ApiProperty({ enum: DiscountType, example: DiscountType.VOUCHER })
+  discountType: DiscountType;
+  
+  @ApiProperty({ description: 'Jumlah potongan harga yang diberikan oleh diskon ini.', example: 15000 })
+  amount: number;
+}
+
+
 // DTO utama untuk respons order
 export class OrderResponseDto {
   @ApiProperty({ example: 501 })
@@ -96,10 +106,17 @@ export class OrderResponseDto {
   @ApiProperty({ example: 15000 })
   shippingCost: number;
 
-  @ApiProperty({ example: 300000 })
+  @ApiProperty({ description: 'Subtotal asli sebelum diskon.', example: 300000 })
   subtotal: number;
 
-  @ApiProperty({ example: 315000 })
+  // --- TAMBAHAN: Field untuk rekap diskon ---
+  @ApiProperty({ description: 'Total diskon dari promo SALE (harga coret).', example: 30000 })
+  saleDiscountAmount: number;
+
+  @ApiProperty({ description: 'Total diskon dari VOUCHER.', example: 15000 })
+  voucherDiscountAmount: number;
+  
+  @ApiProperty({ description: 'Total akhir setelah dikurangi semua diskon dan ditambah ongkir.', example: 270000 })
   total: number;
   
   @ApiProperty({ description: 'Kode mata uang (ISO 4217).', example: 'IDR' })
@@ -130,4 +147,11 @@ export class OrderResponseDto {
 
   @ApiProperty({ type: [OrderItemInOrderDto] })
   orderItems: OrderItemInOrderDto[];
+
+  // --- TAMBAHAN: Field untuk rincian diskon ---
+  @ApiProperty({ 
+    type: [AppliedDiscountDto],
+    description: 'Daftar detail diskon yang diterapkan pada pesanan ini.'
+  })
+  appliedDiscounts: AppliedDiscountDto[];
 }

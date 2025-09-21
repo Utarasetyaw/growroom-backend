@@ -13,32 +13,41 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { CartService } from '../cart/cart.service';
 import { sendTelegramMessage } from '../utils/telegram.util';
-import { OrderStatus, PaymentStatus, Prisma, User, Product } from '@prisma/client';
+import { OrderStatus, PaymentStatus, Prisma, DiscountType, DiscountValueType } from '@prisma/client';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { OrderResponseDto } from './dto/order-response.dto';
 import { MidtransService } from '../midtrans/midtrans.service';
 import { PaypalService } from '../paypal/paypal.service';
 import { PdfService } from '../pdf/pdf.service';
+import { DiscountsService } from '../discounts/discounts.service';
 
+// --- TAMBAHAN: Object `include` yang akan digunakan berulang kali ---
+const orderWithDetailsInclude = Prisma.validator<Prisma.OrderInclude>()({
+  user: true,
+  orderItems: {
+    include: {
+      product: {
+        include: { images: { take: 1, orderBy: { id: 'asc' } } }
+      }
+    }
+  },
+  paymentMethod: true,
+  appliedDiscounts: true,
+});
+
+// Tipe `OrderWithDetails` sekarang menggunakan object di atas untuk memastikan konsistensi
 type OrderWithDetails = Prisma.OrderGetPayload<{
-  include: {
-    user: true;
-    orderItems: { 
-      include: { 
-        product: {
-          include: { images: { take: 1, orderBy: { id: 'asc' } } }
-        } 
-      } 
-    };
-    paymentMethod: true;
-  };
+  include: typeof orderWithDetailsInclude;
 }>;
 
 interface CalculatedTotals {
   subtotal: number;
   shippingCost: number;
-  total: number;
-  productMap: Map<number, Prisma.ProductGetPayload<{ include: { prices: true; images: true } }>>;
+  saleDiscountTotal: number;
+  voucherDiscountTotal: number;
+  grandTotal: number;
+  productMap: Map<number, Prisma.ProductGetPayload<{ include: { prices: true; images: true; discounts: true; } }>>;
+  validatedVoucher?: any;
 }
 
 interface SaveOrderPayload extends CreateOrderDto, CalculatedTotals {
@@ -58,6 +67,7 @@ export class OrdersService {
     @Inject(forwardRef(() => PaypalService))
     private paypalService: PaypalService,
     private pdfService: PdfService,
+    private discountsService: DiscountsService,
   ) {}
 
   async create(userId: number, dto: CreateOrderDto) {
@@ -75,9 +85,9 @@ export class OrdersService {
       throw new NotFoundException('Pengguna tidak ditemukan.');
     }
 
-    const totals = await this._calculateTotals(dto);
+    const totals = await this._calculateTotals(userId, dto);
 
-    // Logika untuk setiap metode pembayaran
+    // Ganti `totals.total` menjadi `totals.grandTotal` di semua pemanggilan
     switch (paymentMethod.code) {
       case 'midtrans': {
         try {
@@ -100,7 +110,7 @@ export class OrdersService {
           
           const paymentResponse = await this.midtransService.createTransaction(
             orderIdForMidtrans,
-            totals.total,
+            totals.grandTotal,
             itemDetailsForMidtrans,
             { name: user.name, email: user.email },
             paymentMethod.id,
@@ -116,7 +126,7 @@ export class OrdersService {
             internalOrderId: order.id,
           };
         } catch (error) {
-          this.logger.error(`[Midtrans Create] Gagal membuat transaksi: ${error.message}`, error.stack);
+           this.logger.error(`[Midtrans Create] Gagal membuat transaksi: ${error.message}`, error.stack);
           throw new BadRequestException('Gagal memproses pembayaran Midtrans.');
         }
       }
@@ -125,7 +135,7 @@ export class OrdersService {
           const order = await this._saveOrderToDb({ ...dto, ...totals, userId });
           const refIdForPaypal = `ORDER-${order.id}`;
           const paypalOrderResponse = await this.paypalService.createPaypalOrder(
-            totals.total,
+            totals.grandTotal,
             dto.currencyCode,
             paymentMethod.id,
             refIdForPaypal,
@@ -212,8 +222,8 @@ export class OrdersService {
     return this.findOne(id);
   }
 
-  private async _saveOrderToDb(payload: SaveOrderPayload, isPaid: boolean = false): Promise<OrderWithDetails> {
-    const { userId, address, shippingCost, subtotal, total, paymentMethodId, currencyCode, midtransOrderId, paypalOrderId, orderItems, productMap } = payload;
+  private async _saveOrderToDb(payload: SaveOrderPayload): Promise<OrderWithDetails> {
+    const { userId, address, shippingCost, subtotal, grandTotal, saleDiscountTotal, voucherDiscountTotal, validatedVoucher, paymentMethodId, currencyCode, midtransOrderId, paypalOrderId, orderItems, productMap } = payload;
     
     const paymentDueDate = new Date();
     paymentDueDate.setDate(paymentDueDate.getDate() + 2);
@@ -232,11 +242,13 @@ export class OrdersService {
           address,
           shippingCost,
           subtotal,
-          total,
-          paymentStatus: isPaid ? PaymentStatus.PAID : PaymentStatus.PENDING_PAYMENT,
-          orderStatus: isPaid ? OrderStatus.PROCESSING : OrderStatus.PENDING,
+          saleDiscountAmount: saleDiscountTotal,
+          voucherDiscountAmount: voucherDiscountTotal,
+          total: grandTotal,
+          paymentStatus: PaymentStatus.PENDING_PAYMENT,
+          orderStatus: OrderStatus.PENDING,
           paymentMethodId,
-          paymentDueDate: isPaid ? null : paymentDueDate,
+          paymentDueDate,
           currencyCode,
           midtransOrderId,
           paypalOrderId,
@@ -257,16 +269,63 @@ export class OrdersService {
             }),
           },
         },
-        include: { user: true, orderItems: { include: { product: { include: { images: { take: 1, orderBy: { id: 'asc' } } } } } }, paymentMethod: true },
+        include: orderWithDetailsInclude, // <-- GUNAKAN OBJECT KONSTAN
       });
+
+      for (const item of orderItems) {
+        const product = productMap.get(item.productId);
+        const saleDiscount = product?.discounts[0];
+        if (saleDiscount) {
+          let itemDiscountAmount = 0;
+          if (saleDiscount.discountType === DiscountValueType.FIXED) {
+             itemDiscountAmount = (saleDiscount.value as any)[currencyCode] || 0;
+          } else {
+             itemDiscountAmount = product.prices[0].price * (Number(saleDiscount.value) / 100);
+          }
+          await tx.appliedDiscount.create({
+            data: {
+              orderId: newOrder.id,
+              discountId: saleDiscount.id,
+              discountName: saleDiscount.name,
+              discountType: DiscountType.SALE,
+              amount: itemDiscountAmount * item.qty,
+              currencyCode: currencyCode,
+            }
+          });
+        }
+      }
+
+      if (validatedVoucher) {
+        await tx.appliedDiscount.create({
+          data: {
+            orderId: newOrder.id,
+            discountId: validatedVoucher.discount.id,
+            discountName: validatedVoucher.discount.name,
+            discountType: DiscountType.VOUCHER,
+            amount: voucherDiscountTotal,
+            currencyCode: currencyCode,
+          }
+        });
+        await tx.discount.update({
+          where: { id: validatedVoucher.discount.id },
+          data: { usesCount: { increment: 1 } },
+        });
+        await tx.voucherUsage.create({
+          data: {
+            userId: userId,
+            discountId: validatedVoucher.discount.id,
+            orderId: newOrder.id,
+          }
+        });
+      }
 
       await this.cartService.clearCart(userId);
       return newOrder;
     });
   }
 
-  private async _calculateTotals(dto: CreateOrderDto): Promise<CalculatedTotals> {
-    const { orderItems, shippingRateId, currencyCode } = dto;
+  private async _calculateTotals(userId: number, dto: CreateOrderDto): Promise<CalculatedTotals> {
+    const { orderItems, shippingRateId, currencyCode, voucherCode } = dto;
     if (!orderItems || orderItems.length === 0) {
       throw new BadRequestException('Item pesanan tidak boleh kosong.');
     }
@@ -277,17 +336,57 @@ export class OrdersService {
       include: {
         prices: { where: { currency: { code: currencyCode } } },
         images: { take: 1, orderBy: { id: 'asc' } },
+        discounts: {
+          where: {
+            type: DiscountType.SALE,
+            isActive: true,
+            startDate: { lte: new Date() },
+            endDate: { gte: new Date() },
+          },
+        },
       },
     });
     const productMap = new Map(productsFromDb.map((p) => [p.id, p]));
 
     let subtotal = 0;
+    let saleDiscountTotal = 0;
     for (const item of orderItems) {
       const product = productMap.get(item.productId);
       if (!product) throw new BadRequestException(`Produk dengan ID ${item.productId} tidak ditemukan.`);
       if (product.stock < item.qty) throw new BadRequestException(`Stok tidak cukup untuk produk ${(product.name as any)?.en}.`);
       if (!product.prices[0]) throw new BadRequestException(`Harga dalam ${currencyCode} tidak ditemukan untuk ${(product.name as any)?.en}.`);
-      subtotal += product.prices[0].price * item.qty;
+      
+      const originalPrice = product.prices[0].price;
+      subtotal += originalPrice * item.qty;
+
+      const saleDiscount = product.discounts[0];
+      if (saleDiscount) {
+        let itemDiscountAmount = 0;
+        if (saleDiscount.discountType === DiscountValueType.FIXED) {
+          itemDiscountAmount = (saleDiscount.value as any)[currencyCode] || 0;
+        } else {
+          itemDiscountAmount = originalPrice * (Number(saleDiscount.value) / 100);
+        }
+        saleDiscountTotal += itemDiscountAmount * item.qty;
+      }
+    }
+
+    let voucherDiscountTotal = 0;
+    let validatedVoucher: any = undefined;
+
+    if (voucherCode) {
+      validatedVoucher = await this.discountsService.validateVoucher(userId, {
+        voucherCode,
+        cartItems: orderItems.map(i => ({ productId: i.productId, quantity: i.qty }))
+      });
+
+      const subtotalAfterSale = subtotal - saleDiscountTotal;
+      if (validatedVoucher.discount.type === DiscountValueType.FIXED) {
+        voucherDiscountTotal = (validatedVoucher.discount.value as any)[currencyCode] || 0;
+      } else {
+        voucherDiscountTotal = subtotalAfterSale * (Number(validatedVoucher.discount.value) / 100);
+      }
+      voucherDiscountTotal = Math.min(voucherDiscountTotal, subtotalAfterSale);
     }
 
     let shippingCost = 0;
@@ -300,7 +399,9 @@ export class OrdersService {
       shippingCost = rate.prices[0].price;
     }
 
-    return { subtotal, shippingCost, total: subtotal + shippingCost, productMap };
+    const grandTotal = subtotal - saleDiscountTotal - voucherDiscountTotal + shippingCost;
+
+    return { subtotal, shippingCost, saleDiscountTotal, voucherDiscountTotal, grandTotal: Math.max(0, grandTotal), productMap, validatedVoucher };
   }
 
   private async _sendTelegramNotification(order: OrderWithDetails): Promise<void> {
@@ -330,7 +431,7 @@ export class OrdersService {
       this.prisma.order.findMany({
         skip,
         take: limit,
-        include: { user: true, orderItems: { include: { product: { include: { images: { take: 1, orderBy: { id: 'asc' } } } } } }, paymentMethod: true },
+        include: orderWithDetailsInclude, // <-- GUNAKAN OBJECT KONSTAN
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.order.count(),
@@ -342,7 +443,7 @@ export class OrdersService {
   async findUserOrders(userId: number) {
     const orders = await this.prisma.order.findMany({
       where: { userId },
-      include: { user: true, orderItems: { include: { product: { include: { images: { take: 1, orderBy: { id: 'asc' } } } } } }, paymentMethod: true },
+      include: orderWithDetailsInclude, // <-- GUNAKAN OBJECT KONSTAN
       orderBy: { createdAt: 'desc' },
     });
     return orders.map(mapOrderToDto).filter((o): o is OrderResponseDto => o !== null);
@@ -351,7 +452,7 @@ export class OrdersService {
   async findOne(id: number, userId?: number) {
     const order = await this.prisma.order.findUnique({
       where: { id },
-      include: { user: true, orderItems: { include: { product: { include: { images: { take: 1, orderBy: { id: 'asc' } } } } } }, paymentMethod: true },
+      include: orderWithDetailsInclude, // <-- GUNAKAN OBJECT KONSTAN
     });
     if (!order) throw new NotFoundException('Order tidak ditemukan.');
     if (userId && order.userId !== userId) throw new ForbiddenException('Akses ditolak.');
@@ -371,20 +472,9 @@ export class OrdersService {
   async retryPayment(orderId: number, userId: number) {
     this.logger.log(`User #${userId} mencoba membayar ulang order #${orderId}`);
     
-    // --- PERUBAHAN DI SINI: Query diperbaiki untuk mengambil data secara lengkap ---
     const order = await this.prisma.order.findFirst({
       where: { id: orderId, userId },
-      include: {
-        user: true,
-        paymentMethod: true,
-        orderItems: {
-          include: {
-            product: {
-              include: { images: { take: 1, orderBy: { id: 'asc' } } },
-            },
-          },
-        },
-      },
+      include: orderWithDetailsInclude, // <-- GUNAKAN OBJECT KONSTAN
     });
 
     if (!order) {
@@ -447,23 +537,7 @@ export class OrdersService {
             amount: order.total, 
             paymentDueDate: order.paymentDueDate 
         };
-        
-        // --- BLOK INI DIHAPUS karena data sudah lengkap dari query awal ---
-        /*
-        const orderWithProducts = {
-            ...order,
-            orderItems: await Promise.all(
-                order.orderItems.map(async (item) => ({
-                    ...item,
-                    product: item.productId
-                        ? await this.prisma.product.findUnique({ where: { id: item.productId } })
-                        : null,
-                }))
-            ),
-        };
-        */
 
-        // Langsung gunakan 'order' karena sudah valid sesuai tipe OrderWithDetails
         const mappedOrder = mapOrderToDto(order);
 
         if (!mappedOrder) {
@@ -527,22 +601,29 @@ const mapOrderToDto = (order: OrderWithDetails | null): OrderResponseDto | null 
   return {
     id: order.id,
     address: order.address,
-    shippingCost: order.shippingCost,
-    subtotal: order.subtotal,
-    total: order.total,
+    shippingCost: Number(order.shippingCost),
+    subtotal: Number(order.subtotal),
+    total: Number(order.total),
     currencyCode: order.currencyCode,
     paymentStatus: order.paymentStatus,
     orderStatus: order.orderStatus,
     createdAt: order.createdAt,
     updatedAt: order.updatedAt,
     paymentDueDate: order.paymentDueDate ?? undefined,
+    saleDiscountAmount: Number(order.saleDiscountAmount),
+    voucherDiscountAmount: Number(order.voucherDiscountAmount),
+    appliedDiscounts: order.appliedDiscounts.map(ad => ({
+      discountName: ad.discountName,
+      discountType: ad.discountType,
+      amount: Number(ad.amount),
+    })),
     orderItems: order.orderItems.map((item) => {
       const isProductAvailable = !!item.product;
       return {
         id: item.id,
         qty: item.qty,
-        price: item.price,
-        subtotal: item.subtotal,
+        price: Number(item.price),
+        subtotal: Number(item.subtotal),
         productName: isProductAvailable && item.product ? (item.product.name as any) : (item.productName as any),
         productVariant: isProductAvailable && item.product ? (item.product.variant as any) : (item.productVariant as any),
         productImage: isProductAvailable && item.product
