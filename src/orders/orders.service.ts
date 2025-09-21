@@ -198,14 +198,11 @@ export class OrdersService {
     const shouldReturnStock = wasStockUsed && isStockReturning;
 
     await this.prisma.$transaction(async (tx) => {
-      // --- TAMBAHAN: Logika untuk menandai voucher setelah dibayar (manual) ---
       if (paymentStatus === PaymentStatus.PAID && existingOrder.paymentStatus !== PaymentStatus.PAID) {
-        this.logger.log(`Order #${id} status pembayaran diubah menjadi PAID. Menjalankan logika penggunaan voucher...`);
-        // Memanggil service diskon di dalam transaksi yang sama untuk menjamin konsistensi data
+        this.logger.log(`Menandai voucher untuk Order #${id} di dalam transaksi...`);
         await this.discountsService.markVoucherAsUsedForOrder(id, existingOrder.userId, tx);
       }
-      // --- BATAS TAMBAHAN ---
-
+      
       await tx.order.update({
         where: { id },
         data: { paymentStatus, orderStatus, trackingNumber },
@@ -281,14 +278,28 @@ export class OrdersService {
         const product = productMap.get(item.productId);
         const saleDiscount = product?.discounts[0];
         if (saleDiscount) {
+          let itemDiscountAmount = 0;
+          if (saleDiscount.discountType === DiscountValueType.FIXED) {
+             itemDiscountAmount = (saleDiscount.value as any)[currencyCode] || 0;
+          } else {
+             const discountValue = Number(saleDiscount.value);
+             if (!isNaN(discountValue)) {
+                itemDiscountAmount = product.prices[0].price * (discountValue / 100);
+             }
+          }
+
           await tx.appliedDiscount.create({
             data: {
-              orderId: newOrder.id,
-              discountId: saleDiscount.id,
               discountName: saleDiscount.name,
               discountType: DiscountType.SALE,
-              amount: (product.prices[0].price * (Number(saleDiscount.value) / 100)) * item.qty,
+              amount: itemDiscountAmount * item.qty,
               currencyCode: currencyCode,
+              order: {
+                connect: { id: newOrder.id }
+              },
+              discount: {
+                connect: { id: saleDiscount.id }
+              }
             }
           });
         }
@@ -297,17 +308,18 @@ export class OrdersService {
       if (validatedVoucher) {
         await tx.appliedDiscount.create({
           data: {
-            orderId: newOrder.id,
-            discountId: validatedVoucher.discount.id,
             discountName: validatedVoucher.discount.name,
             discountType: DiscountType.VOUCHER,
             amount: voucherDiscountTotal,
             currencyCode: currencyCode,
+            order: {
+              connect: { id: newOrder.id }
+            },
+            discount: {
+              connect: { id: validatedVoucher.discount.id }
+            }
           }
         });
-
-        // --- HAPUS LOGIKA PENGGUNAAN VOUCHER DARI SINI ---
-        // Logika ini sekarang akan dipanggil hanya setelah pembayaran berhasil.
       }
 
       await this.cartService.clearCart(userId);
@@ -356,7 +368,10 @@ export class OrdersService {
         if (saleDiscount.discountType === DiscountValueType.FIXED) {
           itemDiscountAmount = (saleDiscount.value as any)[currencyCode] || 0;
         } else {
-          itemDiscountAmount = originalPrice * (Number(saleDiscount.value) / 100);
+          const discountValue = Number(saleDiscount.value);
+          if (!isNaN(discountValue)) {
+            itemDiscountAmount = originalPrice * (discountValue / 100);
+          }
         }
         saleDiscountTotal += itemDiscountAmount * item.qty;
       }
@@ -375,7 +390,10 @@ export class OrdersService {
       if (validatedVoucher.discount.type === DiscountValueType.FIXED) {
         voucherDiscountTotal = (validatedVoucher.discount.value as any)[currencyCode] || 0;
       } else {
-        voucherDiscountTotal = subtotalAfterSale * (Number(validatedVoucher.discount.value) / 100);
+        const discountValue = Number(validatedVoucher.discount.value);
+        if (!isNaN(discountValue)) {
+            voucherDiscountTotal = subtotalAfterSale * (discountValue / 100);
+        }
       }
       voucherDiscountTotal = Math.min(voucherDiscountTotal, subtotalAfterSale);
     }
