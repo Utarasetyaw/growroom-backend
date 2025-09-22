@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { DiscountType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { GetProductsQueryDto } from '../user_frontend/dto/get-products-query.dto';
@@ -68,7 +68,7 @@ export class ProductsService {
     return this.prisma.$transaction(async (tx) => {
       const product = await tx.product.findUnique({ where: { id } });
       if (!product) {
-        throw new NotFoundException(`Product with ID #${id} not found.`);
+        throw new Error(`Product with ID #${id} not found.`);
       }
 
       await tx.product.update({
@@ -132,7 +132,7 @@ export class ProductsService {
       include: this.productInclude,
     });
     if (!product) {
-      throw new NotFoundException(`Product with ID #${id} not found.`);
+      throw new Error(`Product with ID #${id} not found.`);
     }
     return product;
   }
@@ -147,7 +147,8 @@ export class ProductsService {
     });
 
     if (!product) {
-      throw new NotFoundException(`Product not found or has been archived.`);
+      // Perubahan: Mengembalikan null alih-alih melempar exception
+      return null;
     }
     return product;
   }
@@ -159,7 +160,7 @@ export class ProductsService {
         include: { images: true },
       });
       if (!product) {
-        throw new NotFoundException(`Product with ID #${id} not found.`);
+        throw new Error(`Product with ID #${id} not found.`);
       }
       if (product.images && product.images.length > 0) {
         for (const image of product.images) {
