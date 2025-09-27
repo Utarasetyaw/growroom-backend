@@ -87,8 +87,8 @@ export class PdfService {
       doc.on('end', () => resolve(Buffer.concat(buffers)));
 
       await this.generateHeader(doc, settings, lang);
-      this.generateCustomerInformation(doc, order, T, lang);
-      this.generateInvoiceTable(doc, order, T, lang); // Method ini direvisi
+      this.generateCustomerInformation(doc, order, T, lang); // Method ini direvisi
+      this.generateInvoiceTable(doc, order, T, lang);
       this.generateFooter(doc, settings, T);
 
       doc.end();
@@ -159,6 +159,7 @@ export class PdfService {
     }
   }
 
+  // --- REVISI DI SINI ---
   private generateCustomerInformation(
     doc: PDFKit.PDFDocument,
     order: OrderResponseDto,
@@ -173,24 +174,32 @@ export class PdfService {
     this.generateHr(doc, 185);
 
     const customerInfoTop = 200;
-    const addressObject = this.parseAddress(order.address);
+    const addressObject = this.parseAddress(order.address); // Membuat baris-baris alamat yang akan ditampilkan
     const addressLines = [
       addressObject.name,
       addressObject.phone,
       addressObject.street,
       `${addressObject.city}, ${addressObject.province} ${addressObject.postalCode}`,
       addressObject.country,
-    ].filter(Boolean);
+    ].filter(Boolean); // Menghapus baris yang kosong
+    // Menampilkan header "Billed To:"
 
     doc
       .fontSize(10)
       .font('Helvetica-Bold')
-      .text(T.BILLED_TO, 50, customerInfoTop);
-    let currentY = customerInfoTop;
+      .text(T.BILLED_TO, 50, customerInfoTop); // Mulai menulis alamat dari posisi Y di bawah header
+
+    let currentY = customerInfoTop + 15;
+    doc.font('Helvetica'); // Set font sekali saja untuk semua baris alamat
+    // Loop untuk setiap baris alamat dengan penempatan Y dinamis
+
     addressLines.forEach((line) => {
-      currentY += 15;
-      doc.font('Helvetica').text(line, 50, currentY);
-    });
+      // Tentukan lebar maksimum untuk teks alamat agar bisa wrap
+      const textWidth = 250;
+      doc.text(line, 50, currentY, { width: textWidth }); // Hitung ketinggian teks yang baru saja ditulis (termasuk jika wrap)
+      const textHeight = doc.heightOfString(line, { width: textWidth }); // Pindahkan posisi Y ke bawah berdasarkan ketinggian teks + sedikit jeda
+      currentY += textHeight + 2;
+    }); // Informasi Invoice (Nomor, Tanggal, Status) di sebelah kanan
 
     doc
       .font('Helvetica-Bold')
@@ -213,7 +222,8 @@ export class PdfService {
       .font('Helvetica')
       .text(order.paymentStatus, 450, customerInfoTop + 30)
       .moveDown();
-  } // --- REVISI UTAMA DIMULAI DI SINI ---
+  }
+
   private generateInvoiceTable(
     doc: PDFKit.PDFDocument,
     order: OrderResponseDto,
@@ -221,7 +231,7 @@ export class PdfService {
     lang: 'en' | 'id',
   ) {
     const invoiceTableTop = 330;
-    const currency = order.currencyCode; // Header Tabel
+    const currency = order.currencyCode;
 
     doc.font('Helvetica-Bold');
     this.generateTableRow(
@@ -233,11 +243,11 @@ export class PdfService {
       T.TOTAL,
     );
     this.generateHr(doc, invoiceTableTop + 20);
-    doc.font('Helvetica'); // Item Produk
+    doc.font('Helvetica');
 
     let position = invoiceTableTop;
     for (const item of order.orderItems) {
-      position += 30; // Pindah ke baris berikutnya
+      position += 30;
       const name =
         item.productName?.[lang] ||
         item.productName?.['en'] ||
@@ -251,7 +261,7 @@ export class PdfService {
         this.formatCurrency(item.subtotal, currency, lang),
       );
       this.generateHr(doc, position + 20);
-    } // Bagian Summary (Subtotal, Diskon, Total)
+    }
 
     let summaryPosition = position + 30;
 
@@ -293,7 +303,7 @@ export class PdfService {
       T.SHIPPING_FEE,
       this.formatCurrency(order.shippingCost, currency, lang),
     );
-    summaryPosition += 10; // Beri spasi sebelum grand total
+    summaryPosition += 10;
 
     this.generateSummaryRow(
       doc,
@@ -302,7 +312,7 @@ export class PdfService {
       this.formatCurrency(order.total, currency, lang),
       { font: 'Helvetica-Bold' },
     );
-  } // Helper function baru untuk summary agar lebih rapi
+  }
 
   private generateSummaryRow(
     doc: PDFKit.PDFDocument,
@@ -314,21 +324,22 @@ export class PdfService {
     const defaultFont = 'Helvetica';
     const defaultColor = '#444444';
     const labelX = 280;
-    const labelWidth = 200; // Lebar untuk label agar bisa wrap
+    const labelWidth = 200;
     const lineGap = 5;
 
     doc
       .font(options.font || defaultFont)
-      .fillColor(options.color || defaultColor); // Gambar label (bisa wrap jika panjang)
-    doc.text(label, labelX, y, { width: labelWidth, align: 'left' }); // Gambar value
-    doc.text(value, 0, y, { align: 'right' }); // Hitung ketinggian baris ini (jika labelnya wrap) dan kembalikan posisi Y berikutnya
+      .fillColor(options.color || defaultColor);
+    doc.text(label, labelX, y, { width: labelWidth, align: 'left' });
+    doc.text(value, 0, y, { align: 'right' });
 
     const labelHeight = doc.heightOfString(label, { width: labelWidth });
     const valueHeight = doc.heightOfString(value);
-    const rowHeight = Math.max(labelHeight, valueHeight); // Kembalikan warna dan font ke default
+    const rowHeight = Math.max(labelHeight, valueHeight);
     doc.font(defaultFont).fillColor(defaultColor);
     return y + rowHeight + lineGap;
-  } // --- REVISI UTAMA SELESAI ---
+  }
+
   private generateReportTitle(
     doc: PDFKit.PDFDocument,
     startStr: string,
