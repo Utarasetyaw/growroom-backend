@@ -227,6 +227,7 @@ export class PdfService {
       .moveDown();
   }
 
+  // --- REVISI DI SINI (LOGIKA LOOP) ---
   private generateInvoiceTable(
     doc: PDFKit.PDFDocument,
     order: OrderResponseDto,
@@ -235,6 +236,8 @@ export class PdfService {
   ) {
     const invoiceTableTop = 330;
     const currency = order.currencyCode;
+
+    // Header Tabel
     doc.font('Helvetica-Bold');
     this.generateTableRow(
       doc,
@@ -246,24 +249,32 @@ export class PdfService {
     );
     this.generateHr(doc, invoiceTableTop + 20);
     doc.font('Helvetica');
-    let position = invoiceTableTop;
+
+    // Item Produk dengan posisi Y dinamis
+    let currentY = invoiceTableTop + 30;
     for (const item of order.orderItems) {
-      position += 30;
       const name =
         item.productName?.[lang] ||
         item.productName?.['en'] ||
         'Product Removed';
-      this.generateTableRow(
+      // Menggambar baris dan mendapatkan tinggi sebenarnya
+      const rowHeight = this.generateTableRow(
         doc,
-        position,
+        currentY,
         name,
         item.qty.toString(),
         this.formatCurrency(item.price, currency, lang),
         this.formatCurrency(item.subtotal, currency, lang),
       );
-      this.generateHr(doc, position + 20);
+
+      // Memindahkan posisi Y berdasarkan tinggi baris + padding
+      currentY += rowHeight + 10;
+      this.generateHr(doc, currentY);
+      currentY += 10;
     }
-    let summaryPosition = position + 30;
+
+    // Bagian Summary (Subtotal, Diskon, Total)
+    let summaryPosition = currentY + 10;
     summaryPosition = this.generateSummaryRow(
       doc,
       summaryPosition,
@@ -396,6 +407,7 @@ export class PdfService {
     });
   }
 
+  // --- REVISI DI SINI (FUNGSI MENGEMBALIKAN TINGGI BARIS) ---
   private generateTableRow(
     doc: PDFKit.PDFDocument,
     y: number,
@@ -403,13 +415,16 @@ export class PdfService {
     qty: string,
     unitCost: string,
     lineTotal: string,
-  ) {
+  ): number {
     doc
       .fontSize(10)
       .text(item, 50, y, { width: 200 })
       .text(qty, 280, y, { width: 90, align: 'right' })
       .text(unitCost, 370, y, { width: 90, align: 'right' })
       .text(lineTotal, 0, y, { align: 'right' });
+
+    // Kembalikan tinggi dari kolom terpanjang (yaitu nama item)
+    return doc.heightOfString(item, { width: 200 });
   }
 
   private generateHr(doc: PDFKit.PDFDocument, y: number, x1 = 50, x2 = 550) {
