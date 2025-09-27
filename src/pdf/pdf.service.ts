@@ -81,14 +81,29 @@ export class PdfService {
     const T = translations[lang];
 
     return new Promise(async (resolve) => {
-      const doc = new PDFDocument({ size: 'A4', margin: 50 });
+      const doc = new PDFDocument({
+        size: 'A4',
+        margin: 50,
+        permissions: {
+          printing: 'highResolution',
+          modifying: false,
+          copying: false,
+          annotating: false,
+        },
+      });
+
       const buffers: Buffer[] = [];
       doc.on('data', buffers.push.bind(buffers));
       doc.on('end', () => resolve(Buffer.concat(buffers)));
 
       await this.generateHeader(doc, settings, lang);
-      this.generateCustomerInformation(doc, order, T, lang); // Method ini direvisi
+      this.generateCustomerInformation(doc, order, T, lang);
       this.generateInvoiceTable(doc, order, T, lang);
+
+      if (order.paymentStatus === 'PAID') {
+        this.generatePaidStamp(doc);
+      }
+
       this.generateFooter(doc, settings, T);
 
       doc.end();
@@ -127,7 +142,6 @@ export class PdfService {
   ) {
     const shopName =
       settings?.shopName?.[lang] || settings?.shopName?.en || 'Your Shop Name';
-
     doc
       .fontSize(20)
       .font('Helvetica-Bold')
@@ -141,7 +155,6 @@ export class PdfService {
         85,
       )
       .moveDown();
-
     if (settings?.logoUrl) {
       try {
         const logoPath = path.join(process.cwd(), settings.logoUrl);
@@ -159,7 +172,6 @@ export class PdfService {
     }
   }
 
-  // --- REVISI DI SINI ---
   private generateCustomerInformation(
     doc: PDFKit.PDFDocument,
     order: OrderResponseDto,
@@ -172,35 +184,27 @@ export class PdfService {
       .font('Helvetica-Bold')
       .text(T.INVOICE, 50, 160);
     this.generateHr(doc, 185);
-
     const customerInfoTop = 200;
-    const addressObject = this.parseAddress(order.address); // Membuat baris-baris alamat yang akan ditampilkan
+    const addressObject = this.parseAddress(order.address);
     const addressLines = [
       addressObject.name,
       addressObject.phone,
       addressObject.street,
       `${addressObject.city}, ${addressObject.province} ${addressObject.postalCode}`,
       addressObject.country,
-    ].filter(Boolean); // Menghapus baris yang kosong
-    // Menampilkan header "Billed To:"
-
+    ].filter(Boolean);
     doc
       .fontSize(10)
       .font('Helvetica-Bold')
-      .text(T.BILLED_TO, 50, customerInfoTop); // Mulai menulis alamat dari posisi Y di bawah header
-
+      .text(T.BILLED_TO, 50, customerInfoTop);
     let currentY = customerInfoTop + 15;
-    doc.font('Helvetica'); // Set font sekali saja untuk semua baris alamat
-    // Loop untuk setiap baris alamat dengan penempatan Y dinamis
-
+    doc.font('Helvetica');
     addressLines.forEach((line) => {
-      // Tentukan lebar maksimum untuk teks alamat agar bisa wrap
       const textWidth = 250;
-      doc.text(line, 50, currentY, { width: textWidth }); // Hitung ketinggian teks yang baru saja ditulis (termasuk jika wrap)
-      const textHeight = doc.heightOfString(line, { width: textWidth }); // Pindahkan posisi Y ke bawah berdasarkan ketinggian teks + sedikit jeda
+      doc.text(line, 50, currentY, { width: textWidth });
+      const textHeight = doc.heightOfString(line, { width: textWidth });
       currentY += textHeight + 2;
-    }); // Informasi Invoice (Nomor, Tanggal, Status) di sebelah kanan
-
+    });
     doc
       .font('Helvetica-Bold')
       .text(T.INVOICE_NO, 350, customerInfoTop)
@@ -216,7 +220,6 @@ export class PdfService {
         450,
         customerInfoTop + 15,
       )
-
       .font('Helvetica-Bold')
       .text(T.STATUS, 350, customerInfoTop + 30)
       .font('Helvetica')
@@ -232,7 +235,6 @@ export class PdfService {
   ) {
     const invoiceTableTop = 330;
     const currency = order.currencyCode;
-
     doc.font('Helvetica-Bold');
     this.generateTableRow(
       doc,
@@ -244,7 +246,6 @@ export class PdfService {
     );
     this.generateHr(doc, invoiceTableTop + 20);
     doc.font('Helvetica');
-
     let position = invoiceTableTop;
     for (const item of order.orderItems) {
       position += 30;
@@ -262,16 +263,13 @@ export class PdfService {
       );
       this.generateHr(doc, position + 20);
     }
-
     let summaryPosition = position + 30;
-
     summaryPosition = this.generateSummaryRow(
       doc,
       summaryPosition,
       T.SUBTOTAL,
       this.formatCurrency(order.subtotal, currency, lang),
     );
-
     if (order.saleDiscountAmount > 0) {
       summaryPosition = this.generateSummaryRow(
         doc,
@@ -296,7 +294,6 @@ export class PdfService {
         { color: '#2ECC71' },
       );
     }
-
     summaryPosition = this.generateSummaryRow(
       doc,
       summaryPosition,
@@ -304,7 +301,6 @@ export class PdfService {
       this.formatCurrency(order.shippingCost, currency, lang),
     );
     summaryPosition += 10;
-
     this.generateSummaryRow(
       doc,
       summaryPosition,
@@ -326,18 +322,35 @@ export class PdfService {
     const labelX = 280;
     const labelWidth = 200;
     const lineGap = 5;
-
     doc
       .font(options.font || defaultFont)
       .fillColor(options.color || defaultColor);
     doc.text(label, labelX, y, { width: labelWidth, align: 'left' });
     doc.text(value, 0, y, { align: 'right' });
-
     const labelHeight = doc.heightOfString(label, { width: labelWidth });
     const valueHeight = doc.heightOfString(value);
     const rowHeight = Math.max(labelHeight, valueHeight);
     doc.font(defaultFont).fillColor(defaultColor);
     return y + rowHeight + lineGap;
+  }
+
+  private generatePaidStamp(doc: PDFKit.PDFDocument) {
+    doc.save();
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(100)
+      .fillColor('#999999')
+      .opacity(0.3)
+      .rotate(-45, { origin: [297, 421] })
+      .text('PAID', 0, 380, { align: 'center' });
+    doc.restore();
+  }
+
+  private generateFooter(doc: PDFKit.PDFDocument, settings: any, T: any) {
+    this.generateHr(doc, 750, 50, 512);
+    doc
+      .fontSize(10)
+      .text(T.THANK_YOU, 50, 760, { align: 'center', width: 500 });
   }
 
   private generateReportTitle(
@@ -381,13 +394,6 @@ export class PdfService {
       doc.fontSize(11).font('Helvetica').text(item.label, 70, y);
       doc.font('Helvetica-Bold').text(item.value, 250, y);
     });
-  }
-
-  private generateFooter(doc: PDFKit.PDFDocument, settings: any, T: any) {
-    this.generateHr(doc, 750, 50, 512);
-    doc
-      .fontSize(10)
-      .text(T.THANK_YOU, 50, 760, { align: 'center', width: 500 });
   }
 
   private generateTableRow(
