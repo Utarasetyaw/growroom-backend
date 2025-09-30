@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { DiscountType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { GetProductsQueryDto } from '../user_frontend/dto/get-products-query.dto';
@@ -42,7 +42,7 @@ export class ProductsService {
 
   async create(createProductDto: CreateProductDto, imageUrls: string[]) {
     const { prices, ...productData } = createProductDto as any;
-    
+
     return this.prisma.$transaction(async (tx) => {
       const dataToCreate: Prisma.ProductCreateInput = {
         ...productData,
@@ -50,25 +50,32 @@ export class ProductsService {
           create: imageUrls.map((url) => ({ url })),
         },
         prices: {
-          create: prices?.map((p: any) => ({ currencyId: p.currencyId, price: p.price })) || [],
+          create:
+            prices?.map((p: any) => ({
+              currencyId: p.currencyId,
+              price: p.price,
+            })) || [],
         },
       };
 
-      return tx.product.create({ data: dataToCreate, include: this.productInclude });
+      return tx.product.create({
+        data: dataToCreate,
+        include: this.productInclude,
+      });
     });
   }
 
-  async update(id: number, updateProductDto: UpdateProductDto, newImageUrls: string[]) {
-    console.log('--- UPDATE PRODUCT DTO RECEIVED ---');
-    console.log(updateProductDto);
-    console.log('-----------------------------------');
-
+  async update(
+    id: number,
+    updateProductDto: UpdateProductDto,
+    newImageUrls: string[],
+  ) {
     const { prices, imagesToDelete, ...productData } = updateProductDto as any;
 
     return this.prisma.$transaction(async (tx) => {
       const product = await tx.product.findUnique({ where: { id } });
       if (!product) {
-        throw new Error(`Product with ID #${id} not found.`);
+        throw new NotFoundException(`Produk dengan ID #${id} tidak ditemukan.`);
       }
 
       await tx.product.update({
@@ -76,19 +83,38 @@ export class ProductsService {
         data: productData,
       });
 
-      if (imagesToDelete && imagesToDelete.length > 0) {
-        const imagesToDeleteRecords = await tx.productImage.findMany({ where: { id: { in: imagesToDelete } } });
+      if (
+        imagesToDelete &&
+        Array.isArray(imagesToDelete) &&
+        imagesToDelete.length > 0
+      ) {
+        const imagesToDeleteRecords = await tx.productImage.findMany({
+          where: {
+            id: { in: imagesToDelete },
+            productId: id, // Pastikan hanya menghapus gambar milik produk ini
+          },
+        });
+
         for (const image of imagesToDeleteRecords) {
-          const orderItemCount = await tx.orderItem.count({ where: { productImage: image.url } });
-          if (orderItemCount === 0) {
-            const imagePath = join(process.cwd(), image.url.startsWith('/') ? image.url.substring(1) : image.url);
-            if (fs.existsSync(imagePath)) {
-              try { fs.unlinkSync(imagePath); }
-              catch (err) { console.error(`Failed to delete file: ${imagePath}`, err); }
+          const imagePath = join(
+            process.cwd(),
+            image.url.startsWith('/') ? image.url.substring(1) : image.url,
+          );
+          if (fs.existsSync(imagePath)) {
+            try {
+              fs.unlinkSync(imagePath);
+              console.log(`Successfully deleted file: ${imagePath}`);
+            } catch (err) {
+              console.error(`Failed to delete file: ${imagePath}`, err);
             }
           }
         }
-        await tx.productImage.deleteMany({ where: { productId: id, id: { in: imagesToDelete } } });
+        await tx.productImage.deleteMany({
+          where: {
+            id: { in: imagesToDelete },
+            productId: id,
+          },
+        });
       }
 
       if (newImageUrls && newImageUrls.length > 0) {
@@ -109,7 +135,7 @@ export class ProductsService {
           });
         }
       }
-      
+
       return tx.product.findUnique({
         where: { id },
         include: this.productInclude,
@@ -132,11 +158,11 @@ export class ProductsService {
       include: this.productInclude,
     });
     if (!product) {
-      throw new Error(`Product with ID #${id} not found.`);
+      throw new NotFoundException(`Produk dengan ID #${id} tidak ditemukan.`);
     }
     return product;
   }
-  
+
   async findOnePublic(id: number) {
     const product = await this.prisma.product.findFirst({
       where: {
@@ -147,12 +173,11 @@ export class ProductsService {
     });
 
     if (!product) {
-      // Perubahan: Mengembalikan null alih-alih melempar exception
       return null;
     }
     return product;
   }
-  
+
   async remove(id: number) {
     return this.prisma.$transaction(async (tx) => {
       const product = await tx.product.findUnique({
@@ -160,16 +185,19 @@ export class ProductsService {
         include: { images: true },
       });
       if (!product) {
-        throw new Error(`Product with ID #${id} not found.`);
+        throw new NotFoundException(`Produk dengan ID #${id} tidak ditemukan.`);
       }
       if (product.images && product.images.length > 0) {
         for (const image of product.images) {
-          const orderItemCount = await tx.orderItem.count({ where: { productImage: image.url } });
-          if (orderItemCount === 0) {
-            const imagePath = join(process.cwd(), image.url.startsWith('/') ? image.url.substring(1) : image.url);
-            if (fs.existsSync(imagePath)) {
-              try { fs.unlinkSync(imagePath); }
-              catch (err) { console.error(`Failed to delete product file: ${imagePath}`, err); }
+          const imagePath = join(
+            process.cwd(),
+            image.url.startsWith('/') ? image.url.substring(1) : image.url,
+          );
+          if (fs.existsSync(imagePath)) {
+            try {
+              fs.unlinkSync(imagePath);
+            } catch (err) {
+              console.error(`Failed to delete product file: ${imagePath}`, err);
             }
           }
         }
@@ -192,7 +220,11 @@ export class ProductsService {
     });
   }
 
-  async findRelatedProducts(currentProductId: number, subCategoryId: number, limit: number) {
+  async findRelatedProducts(
+    currentProductId: number,
+    subCategoryId: number,
+    limit: number,
+  ) {
     return this.prisma.product.findMany({
       where: {
         subCategoryId: subCategoryId,
@@ -227,7 +259,7 @@ export class ProductsService {
 
     if (search) {
       where.name = {
-        path: ['en'],
+        path: ['en'], // Assuming default search is on 'en'
         string_contains: search,
       };
     }
@@ -242,7 +274,7 @@ export class ProductsService {
 
     if (variant) {
       where.variant = {
-        path: ['en'],
+        path: ['en'], // Assuming default search is on 'en'
         string_contains: variant,
       };
     }

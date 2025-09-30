@@ -1,9 +1,21 @@
+// products.controller.ts (FULL REVISED CODE)
+
 import {
-  Controller, Get, Post, Patch, Delete, Param, Body,
-  ParseIntPipe, UseGuards, UseInterceptors, UploadedFiles, ValidationPipe,
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Param,
+  Body,
+  ParseIntPipe,
+  UseGuards,
+  UseInterceptors,
+  UploadedFiles,
+  ValidationPipe,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { ProductsService } from './products.service';
@@ -36,29 +48,38 @@ export class ProductsController {
   @Post()
   @Roles(Role.OWNER, Role.ADMIN)
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FilesInterceptor('images', 10, {
-    storage: diskStorage({
-      destination: './uploads/products',
-      filename: (req, file, cb) => {
-        const randomName = Array(32).fill(null).map(() => Math.round(Math.random() * 16).toString(16)).join('');
-        cb(null, `${randomName}${extname(file.originalname)}`);
-      },
+  @UseInterceptors(
+    FilesInterceptor('images', 10, {
+      storage: diskStorage({
+        destination: './uploads/products',
+        filename: (req, file, cb) => {
+          const randomName = Array(32)
+            .fill(null)
+            .map(() => Math.round(Math.random() * 16).toString(16))
+            .join('');
+          cb(null, `${randomName}${extname(file.originalname)}`);
+        },
+      }),
     }),
-  }))
+  )
   create(
     @UploadedFiles() files: Array<Express.Multer.File>,
-    @Body(new ValidationPipe({ transform: true, whitelist: true })) createProductDto: CreateProductDto,
+    @Body(new ValidationPipe({ transform: true, whitelist: true }))
+    createProductDto: CreateProductDto,
   ) {
-    const imageUrls = files ? files.map(file => `/uploads/products/${file.filename}`) : [];
+    const imageUrls = files
+      ? files.map((file) => `/uploads/products/${file.filename}`)
+      : [];
 
-    // --- REVISI: Konversi manual string ke boolean ---
+    // Konversi nilai boolean dari string 'true'/'false' ke boolean
     if (createProductDto.isActive !== undefined) {
-      (createProductDto as any).isActive = (createProductDto.isActive === 'true');
+      (createProductDto as any).isActive =
+        String(createProductDto.isActive) === 'true';
     }
     if (createProductDto.isBestProduct !== undefined) {
-      (createProductDto as any).isBestProduct = (createProductDto.isBestProduct === 'true');
+      (createProductDto as any).isBestProduct =
+        String(createProductDto.isBestProduct) === 'true';
     }
-    // ----------------------------------------------------
 
     return this.productsService.create(createProductDto, imageUrls);
   }
@@ -66,31 +87,46 @@ export class ProductsController {
   @Patch(':id')
   @Roles(Role.OWNER, Role.ADMIN)
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FilesInterceptor('newImages', 10, {
-    storage: diskStorage({
-      destination: './uploads/products',
-      filename: (req, file, cb) => {
-        const randomName = Array(32).fill(null).map(() => Math.round(Math.random() * 16).toString(16)).join('');
-        cb(null, `${randomName}${extname(file.originalname)}`);
-      },
+  @UseInterceptors(
+    FilesInterceptor('newImages', 10, {
+      storage: diskStorage({
+        destination: './uploads/products',
+        filename: (req, file, cb) => {
+          const randomName = Array(32)
+            .fill(null)
+            .map(() => Math.round(Math.random() * 16).toString(16))
+            .join('');
+          cb(null, `${randomName}${extname(file.originalname)}`);
+        },
+      }),
     }),
-  }))
+  )
   update(
     @Param('id', ParseIntPipe) id: number,
-    @Body(new ValidationPipe({ transform: true, whitelist: true })) updateProductDto: UpdateProductDto,
+    @Body(new ValidationPipe({ transform: true, whitelist: true }))
+    updateProductDto: UpdateProductDto,
     @UploadedFiles() files?: Array<Express.Multer.File>,
   ) {
-    const newImageUrls = files ? files.map(file => `/uploads/products/${file.filename}`) : [];
+    const newImageUrls = files
+      ? files.map((file) => `/uploads/products/${file.filename}`)
+      : [];
 
-    // --- REVISI: Konversi manual string ke boolean ---
+    // Konversi nilai boolean dari string 'true'/'false' ke boolean
     if (updateProductDto.isActive !== undefined) {
-      (updateProductDto as any).isActive = (updateProductDto.isActive === 'true');
+      (updateProductDto as any).isActive =
+        String(updateProductDto.isActive) === 'true';
     }
     if (updateProductDto.isBestProduct !== undefined) {
-      (updateProductDto as any).isBestProduct = (updateProductDto.isBestProduct === 'true');
+      (updateProductDto as any).isBestProduct =
+        String(updateProductDto.isBestProduct) === 'true';
     }
-    // ----------------------------------------------------
-    
+
+    // ============================= PERUBAHAN UTAMA ==============================
+    // Blok 'if (updateProductDto.imagesToDelete)' yang berisi JSON.parse DIHAPUS.
+    // DTO dan ValidationPipe sudah menangani transformasi secara otomatis
+    // dari string "1,2,3" menjadi array [1, 2, 3].
+    // ============================================================================
+
     return this.productsService.update(id, updateProductDto, newImageUrls);
   }
 
