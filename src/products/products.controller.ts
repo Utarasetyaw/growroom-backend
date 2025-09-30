@@ -1,4 +1,4 @@
-// products.controller.ts (FULL REVISED CODE)
+// products.controller.ts (FULL REVISED CODE WITH LOGGER)
 
 import {
   Controller,
@@ -13,6 +13,7 @@ import {
   UseInterceptors,
   UploadedFiles,
   ValidationPipe,
+  Logger,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
@@ -31,6 +32,8 @@ import { UpdateProductDto } from './dto/update-product.dto';
 @Controller('products')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ProductsController {
+  private readonly logger = new Logger(ProductsController.name);
+
   constructor(private readonly productsService: ProductsService) {}
 
   @Get()
@@ -71,7 +74,6 @@ export class ProductsController {
       ? files.map((file) => `/uploads/products/${file.filename}`)
       : [];
 
-    // Konversi nilai boolean dari string 'true'/'false' ke boolean
     if (createProductDto.isActive !== undefined) {
       (createProductDto as any).isActive =
         String(createProductDto.isActive) === 'true';
@@ -107,11 +109,25 @@ export class ProductsController {
     updateProductDto: UpdateProductDto,
     @UploadedFiles() files?: Array<Express.Multer.File>,
   ) {
+    this.logger.log(`[update] Received request for product ID: ${id}`);
+    this.logger.debug(
+      `[update] Transformed DTO received: ${JSON.stringify(
+        updateProductDto,
+        null,
+        2,
+      )}`,
+    );
+
     const newImageUrls = files
       ? files.map((file) => `/uploads/products/${file.filename}`)
       : [];
 
-    // Konversi nilai boolean dari string 'true'/'false' ke boolean
+    if (newImageUrls.length > 0) {
+      this.logger.log(
+        `[update] Received ${newImageUrls.length} new images to upload.`,
+      );
+    }
+
     if (updateProductDto.isActive !== undefined) {
       (updateProductDto as any).isActive =
         String(updateProductDto.isActive) === 'true';
@@ -120,12 +136,6 @@ export class ProductsController {
       (updateProductDto as any).isBestProduct =
         String(updateProductDto.isBestProduct) === 'true';
     }
-
-    // ============================= PERUBAHAN UTAMA ==============================
-    // Blok 'if (updateProductDto.imagesToDelete)' yang berisi JSON.parse DIHAPUS.
-    // DTO dan ValidationPipe sudah menangani transformasi secara otomatis
-    // dari string "1,2,3" menjadi array [1, 2, 3].
-    // ============================================================================
 
     return this.productsService.update(id, updateProductDto, newImageUrls);
   }

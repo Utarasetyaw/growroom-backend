@@ -1,4 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+// products.service.ts (FULL REVISED CODE WITH LOGGER)
+
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { DiscountType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { GetProductsQueryDto } from '../user_frontend/dto/get-products-query.dto';
@@ -9,6 +11,8 @@ import { CreateProductDto } from './dto/create-product.dto';
 
 @Injectable()
 export class ProductsService {
+  private readonly logger = new Logger(ProductsService.name);
+
   constructor(private prisma: PrismaService) {}
 
   private readonly productInclude = {
@@ -70,14 +74,17 @@ export class ProductsService {
     updateProductDto: UpdateProductDto,
     newImageUrls: string[],
   ) {
+    this.logger.log(`[update] Service: Starting update for product ID: ${id}`);
     const { prices, imagesToDelete, ...productData } = updateProductDto as any;
 
     return this.prisma.$transaction(async (tx) => {
       const product = await tx.product.findUnique({ where: { id } });
       if (!product) {
+        this.logger.warn(`[update] Product with ID #${id} not found.`);
         throw new NotFoundException(`Produk dengan ID #${id} tidak ditemukan.`);
       }
 
+      this.logger.log(`[update] Updating main product data for ID: ${id}`);
       await tx.product.update({
         where: { id },
         data: productData,
@@ -88,39 +95,74 @@ export class ProductsService {
         Array.isArray(imagesToDelete) &&
         imagesToDelete.length > 0
       ) {
+        this.logger.log(
+          `[update] Found ${
+            imagesToDelete.length
+          } image(s) to delete. IDs: [${imagesToDelete.join(', ')}]`,
+        );
+
         const imagesToDeleteRecords = await tx.productImage.findMany({
           where: {
             id: { in: imagesToDelete },
-            productId: id, // Pastikan hanya menghapus gambar milik produk ini
+            productId: id,
           },
         });
+
+        this.logger.log(
+          `[update] Found ${imagesToDeleteRecords.length} image records in DB for deletion.`,
+        );
 
         for (const image of imagesToDeleteRecords) {
           const imagePath = join(
             process.cwd(),
             image.url.startsWith('/') ? image.url.substring(1) : image.url,
           );
+
           if (fs.existsSync(imagePath)) {
             try {
+              this.logger.log(
+                `[update] Attempting to delete physical file: ${imagePath}`,
+              );
               fs.unlinkSync(imagePath);
-              console.log(`Successfully deleted file: ${imagePath}`);
+              this.logger.log(
+                `[update] Successfully deleted file: ${imagePath}`,
+              );
             } catch (err) {
-              console.error(`Failed to delete file: ${imagePath}`, err);
+              this.logger.error(
+                `[update] Failed to delete file: ${imagePath}`,
+                err.stack,
+              );
             }
+          } else {
+            this.logger.warn(
+              `[update] File not found, cannot delete: ${imagePath}`,
+            );
           }
         }
+
+        this.logger.log(
+          `[update] Deleting ${imagesToDelete.length} image records from database.`,
+        );
         await tx.productImage.deleteMany({
           where: {
             id: { in: imagesToDelete },
             productId: id,
           },
         });
+        this.logger.log(`[update] Database image records deleted.`);
+      } else {
+        this.logger.log('[update] No images marked for deletion.');
       }
 
       if (newImageUrls && newImageUrls.length > 0) {
+        this.logger.log(
+          `[update] Adding ${newImageUrls.length} new images to DB.`,
+        );
         await tx.productImage.createMany({
           data: newImageUrls.map((url) => ({ url, productId: id })),
         });
+      } else {
+        this.logger.log('[update] No new images to add.');
       }
 
       if (prices) {
@@ -136,6 +178,9 @@ export class ProductsService {
         }
       }
 
+      this.logger.log(
+        `[update] Update process finished. Fetching final product data for ID: ${id}`,
+      );
       return tx.product.findUnique({
         where: { id },
         include: this.productInclude,
@@ -197,7 +242,10 @@ export class ProductsService {
             try {
               fs.unlinkSync(imagePath);
             } catch (err) {
-              console.error(`Failed to delete product file: ${imagePath}`, err);
+              this.logger.error(
+                `Failed to delete product file: ${imagePath}`,
+                err.stack,
+              );
             }
           }
         }
@@ -259,7 +307,7 @@ export class ProductsService {
 
     if (search) {
       where.name = {
-        path: ['en'], // Assuming default search is on 'en'
+        path: ['en'],
         string_contains: search,
       };
     }
@@ -274,7 +322,7 @@ export class ProductsService {
 
     if (variant) {
       where.variant = {
-        path: ['en'], // Assuming default search is on 'en'
+        path: ['en'],
         string_contains: variant,
       };
     }
