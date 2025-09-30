@@ -1,8 +1,11 @@
+// update-product.dto.ts (FULL REVISED CODE)
+
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
   IsString,
   IsInt,
+  IsBoolean, // Pastikan IsBoolean di-import
   IsOptional,
   Min,
   IsNumber,
@@ -62,15 +65,19 @@ export class UpdateProductDto {
   @IsArray({ message: 'Detail perawatan harus berupa array JSON yang valid.' })
   careDetails?: any;
 
-  @ApiPropertyOptional({ description: 'Produk unggulan?', type: 'string' })
+  // --- REVISI ---
+  @ApiPropertyOptional({ description: 'Produk unggulan?', type: 'boolean' })
   @IsOptional()
-  @IsString()
-  isBestProduct?: string;
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsBoolean()
+  isBestProduct?: boolean;
 
-  @ApiPropertyOptional({ description: 'Produk aktif?', type: 'string' })
+  // --- REVISI ---
+  @ApiPropertyOptional({ description: 'Produk aktif?', type: 'boolean' })
   @IsOptional()
-  @IsString()
-  isActive?: string;
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsBoolean()
+  isActive?: boolean;
 
   @ApiPropertyOptional({ description: 'ID sub-kategori' })
   @IsOptional()

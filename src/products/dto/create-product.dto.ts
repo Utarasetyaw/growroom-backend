@@ -1,15 +1,17 @@
+// create-product.dto.ts (FULL REVISED CODE)
+
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
-    IsString,
-    IsInt,
-    IsBoolean,
-    IsOptional,
-    Min,
-    IsNumber,
-    IsObject,
-    IsArray,
-    ValidateIf,
+  IsString,
+  IsInt,
+  IsBoolean, // Pastikan IsBoolean di-import
+  IsOptional,
+  Min,
+  IsNumber,
+  IsObject,
+  IsArray,
+  ValidateIf,
 } from 'class-validator';
 
 // Transformer untuk JSON
@@ -25,12 +27,18 @@ const jsonTransformer = Transform(({ value }) => {
 });
 
 export class CreateProductDto {
-  @ApiProperty({ description: 'Nama produk (JSON string)', example: '{"en": "Product Name"}' })
+  @ApiProperty({
+    description: 'Nama produk (JSON string)',
+    example: '{"en": "Product Name"}',
+  })
   @jsonTransformer
   @IsObject({ message: 'Nama produk harus berupa objek JSON yang valid.' })
   name: any;
 
-  @ApiProperty({ description: 'Varian produk (JSON string)', example: '{"en": "Variegated"}' })
+  @ApiProperty({
+    description: 'Varian produk (JSON string)',
+    example: '{"en": "Variegated"}',
+  })
   @jsonTransformer
   @IsObject({ message: 'Varian produk harus berupa objek JSON yang valid.' })
   variant: any;
@@ -38,7 +46,12 @@ export class CreateProductDto {
   @ApiPropertyOptional({ description: 'Deskripsi produk (JSON string)' })
   @IsOptional()
   @jsonTransformer
-  @ValidateIf(o => o.description !== null && o.description !== undefined && o.description !== '')
+  @ValidateIf(
+    (o) =>
+      o.description !== null &&
+      o.description !== undefined &&
+      o.description !== '',
+  )
   @IsObject({ message: 'Deskripsi produk harus berupa objek JSON yang valid.' })
   description?: any;
 
@@ -48,37 +61,54 @@ export class CreateProductDto {
   @Min(0)
   stock: number;
 
-  @ApiPropertyOptional({ description: 'Berat produk dalam gram', example: 500 })
+  @ApiPropertyOptional({
+    description: 'Berat produk dalam gram',
+    example: 500,
+  })
   @IsOptional()
   @Transform(({ value }) => (value ? parseFloat(value) : null))
   @IsNumber()
   weight?: number;
-  
-  @ApiProperty({ description: 'Detail perawatan (JSON string)', example: '[{"name":{"en":"Watering"},"value":{"en":"Once a week"}}]' })
+
+  @ApiProperty({
+    description: 'Detail perawatan (JSON string)',
+    example: '[{"name":{"en":"Watering"},"value":{"en":"Once a week"}}]',
+  })
   @jsonTransformer
   @IsArray({ message: 'Detail perawatan harus berupa array JSON yang valid.' })
   careDetails: any;
 
-  // --- REVISI UTAMA ---
-  // Menerima input sebagai string untuk menghindari bug transformasi
-  @ApiPropertyOptional({ description: 'Produk unggulan?', default: false, type: 'string', example: 'false' })
+  // --- REVISI ---
+  @ApiPropertyOptional({
+    description: 'Produk unggulan?',
+    default: false,
+    type: 'boolean',
+  })
   @IsOptional()
-  @IsString()
-  isBestProduct?: string;
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsBoolean()
+  isBestProduct?: boolean;
 
-  // --- REVISI UTAMA ---
-  // Menerima input sebagai string untuk menghindari bug transformasi
-  @ApiPropertyOptional({ description: 'Produk aktif?', default: true, type: 'string', example: 'true' })
+  // --- REVISI ---
+  @ApiPropertyOptional({
+    description: 'Produk aktif?',
+    default: true,
+    type: 'boolean',
+  })
   @IsOptional()
-  @IsString()
-  isActive?: string;
-  
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsBoolean()
+  isActive?: boolean;
+
   @ApiProperty({ description: 'ID sub-kategori', example: 1 })
   @Transform(({ value }) => parseInt(value, 10))
   @IsInt()
   subCategoryId: number;
 
-  @ApiProperty({ description: 'Harga produk (JSON string)', example: '[{"currencyId":1,"price":150000}]' })
+  @ApiProperty({
+    description: 'Harga produk (JSON string)',
+    example: '[{"currencyId":1,"price":150000}]',
+  })
   @jsonTransformer
   @IsArray({ message: 'Harga produk harus berupa array JSON yang valid.' })
   prices: any;
