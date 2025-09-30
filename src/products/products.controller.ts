@@ -1,4 +1,4 @@
-// products.controller.ts (FULL REVISED CODE WITH LOGGER)
+// products.controller.ts (FULL REVISED AND CLEANED CODE)
 
 import {
   Controller,
@@ -74,15 +74,7 @@ export class ProductsController {
       ? files.map((file) => `/uploads/products/${file.filename}`)
       : [];
 
-    if (createProductDto.isActive !== undefined) {
-      (createProductDto as any).isActive =
-        String(createProductDto.isActive) === 'true';
-    }
-    if (createProductDto.isBestProduct !== undefined) {
-      (createProductDto as any).isBestProduct =
-        String(createProductDto.isBestProduct) === 'true';
-    }
-
+    // Logika konversi boolean telah dipindahkan ke DTO.
     return this.productsService.create(createProductDto, imageUrls);
   }
 
@@ -128,15 +120,7 @@ export class ProductsController {
       );
     }
 
-    if (updateProductDto.isActive !== undefined) {
-      (updateProductDto as any).isActive =
-        String(updateProductDto.isActive) === 'true';
-    }
-    if (updateProductDto.isBestProduct !== undefined) {
-      (updateProductDto as any).isBestProduct =
-        String(updateProductDto.isBestProduct) === 'true';
-    }
-
+    // Logika konversi boolean telah dipindahkan ke DTO.
     return this.productsService.update(id, updateProductDto, newImageUrls);
   }
 
