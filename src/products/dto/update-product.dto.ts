@@ -5,7 +5,7 @@ import { Transform } from 'class-transformer';
 import {
   IsString,
   IsInt,
-  IsBoolean, // Pastikan IsBoolean di-import
+  IsBoolean,
   IsOptional,
   Min,
   IsNumber,
@@ -65,14 +65,12 @@ export class UpdateProductDto {
   @IsArray({ message: 'Detail perawatan harus berupa array JSON yang valid.' })
   careDetails?: any;
 
-  // --- REVISI ---
   @ApiPropertyOptional({ description: 'Produk unggulan?', type: 'boolean' })
   @IsOptional()
   @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean()
   isBestProduct?: boolean;
 
-  // --- REVISI ---
   @ApiPropertyOptional({ description: 'Produk aktif?', type: 'boolean' })
   @IsOptional()
   @Transform(({ value }) => value === 'true' || value === true)
@@ -89,7 +87,7 @@ export class UpdateProductDto {
   @IsOptional()
   @jsonTransformer
   @IsArray({ message: 'Harga produk harus berupa array JSON yang valid.' })
-  prices?: any;
+  prices?: any; // ========================= PERBAIKAN UTAMA DI SINI =========================
 
   @ApiPropertyOptional({
     description:
@@ -98,11 +96,17 @@ export class UpdateProductDto {
   })
   @IsOptional()
   @Transform(({ value }) => {
-    if (!value || typeof value !== 'string') return undefined;
-    return value
+    // Jika tidak ada value, kembalikan array kosong agar tidak error
+    if (!value) {
+      return [];
+    } // Ubah value (baik itu angka atau string) menjadi string
+    const stringValue = String(value); // Sekarang split, map, dan filter seperti biasa. Ini akan berfungsi
+    // untuk "326" maupun "326,327"
+
+    return stringValue
       .split(',')
       .map((item) => parseInt(item.trim(), 10))
-      .filter((item) => !isNaN(item));
+      .filter((item) => !isNaN(item) && item > 0);
   })
   @IsArray()
   @IsInt({ each: true })
