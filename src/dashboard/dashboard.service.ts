@@ -1,49 +1,88 @@
 // src/dashboard/dashboard.service.ts
+
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrderStatus, PaymentStatus } from '@prisma/client';
 import {
-  startOfDay,
-  endOfDay,
-  startOfWeek,
-  endOfWeek,
-  startOfMonth,
-  endOfMonth,
-  startOfYear,
-  endOfYear,
-  parseISO,
+  startOfDay, endOfDay, subDays, startOfWeek, endOfWeek, subWeeks,
+  startOfMonth, endOfMonth, subMonths
 } from 'date-fns';
-import { GetDashboardDataDto } from './dto/get-dashboard-data.dto';
+import { DashboardQueryDto, RevenuePeriod } from './dto/dashboard-query.dto';
+
+// Tipe untuk data pendapatan yang akan dikembalikan
+type RevenueDataPoint = {
+  period: string;
+  total: number;
+};
+
+// Tipe untuk unit pengelompokan waktu di SQL
+type GroupByUnit = 'hour' | 'day' | 'week' | 'month';
 
 @Injectable()
 export class DashboardService {
   private readonly logger = new Logger(DashboardService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
-  async getDashboardData(query: GetDashboardDataDto) {
-    const { revenuePeriod = 'daily', startDate, endDate } = query;
+  // ▼▼▼ METHOD UTAMA YANG SUDAH DIREVISI TOTAL ▼▼▼
+  async getDashboardData(query: DashboardQueryDto) {
+    this.logger.log(`Memulai proses getDashboardData dengan filter: ${query.revenuePeriod}`);
+    const now = new Date();
+    let startDate: Date, endDate: Date;
+    let groupBy: GroupByUnit;
 
-    // Menentukan rentang tanggal berdasarkan filter dari query
-    const dateRange = this.getDateRange(revenuePeriod, startDate, endDate);
+    // Menentukan rentang tanggal dan pengelompokan berdasarkan query parameter
+    switch (query.revenuePeriod) {
+      case RevenuePeriod.WEEKLY:
+        startDate = startOfDay(subDays(now, 6)); // 7 hari terakhir termasuk hari ini
+        endDate = endOfDay(now);
+        groupBy = 'day';
+        break;
+
+      case RevenuePeriod.MONTHLY:
+        startDate = startOfWeek(subWeeks(now, 3)); // 4 minggu terakhir
+        endDate = endOfWeek(now);
+        groupBy = 'week';
+        break;
+
+      case RevenuePeriod.YEARLY:
+        startDate = startOfMonth(subMonths(now, 11)); // 12 bulan terakhir
+        endDate = endOfMonth(now);
+        groupBy = 'month';
+        break;
+
+      case RevenuePeriod.CUSTOM:
+        if (!query.startDate || !query.endDate) {
+          throw new BadRequestException('startDate dan endDate diperlukan untuk periode custom.');
+        }
+        startDate = startOfDay(new Date(query.startDate));
+        endDate = endOfDay(new Date(query.endDate));
+        groupBy = 'day';
+        break;
+
+      case RevenuePeriod.DAILY:
+      default:
+        startDate = startOfDay(now);
+        endDate = endOfDay(now);
+        groupBy = 'hour';
+        break;
+    }
 
     try {
-      this.logger.log(
-        `Mengambil data dashboard untuk periode: ${revenuePeriod}`,
-      );
+      // Data omzet hari ini (untuk stat card) selalu dihitung untuk hari ini saja
+      const todaysRevenue = await this.getRevenueData(startOfDay(now), endOfDay(now), 'hour');
 
       const [orderStats, revenueData, bestProducts] = await Promise.all([
-        // Statistik pesanan sekarang dihitung berdasarkan rentang tanggal yang dinamis
-        this.getOrderStats(dateRange.start, dateRange.end),
-        // Data pendapatan untuk grafik dihitung berdasarkan rentang tanggal yang dinamis
-        this.getRevenueData(revenuePeriod, dateRange.start, dateRange.end),
-        // Produk terlaris tidak terpengaruh oleh filter tanggal
-        this.getBestProducts(),
+        this.getOrderStats(startDate, endDate), // orderStats mengikuti rentang filter
+        this.getRevenueData(startDate, endDate, groupBy), // revenueData untuk grafik, mengikuti filter
+        this.getBestProducts(), // bestProducts tidak terpengaruh filter waktu
       ]);
 
+      this.logger.log('Berhasil mengambil dan memformat semua data dashboard.');
       return {
         orderStats,
-        revenueData,
+        dailyRevenue: todaysRevenue, // Untuk stat card 'Omzet Hari Ini'
+        revenueData: revenueData,    // Untuk grafik dinamis
         bestProducts,
       };
     } catch (error) {
@@ -51,89 +90,59 @@ export class DashboardService {
       throw error;
     }
   }
-
-  private getDateRange(period: string, startStr?: string, endStr?: string) {
-    const now = new Date();
-    switch (period) {
-      case 'weekly':
-        return {
-          start: startOfWeek(now, { weekStartsOn: 1 }),
-          end: endOfWeek(now, { weekStartsOn: 1 }),
-        };
-      case 'monthly':
-        return { start: startOfMonth(now), end: endOfMonth(now) };
-      case 'yearly':
-        return { start: startOfYear(now), end: endOfYear(now) };
-      case 'custom':
-        if (!startStr || !endStr) {
-          throw new BadRequestException(
-            'Tanggal mulai dan tanggal akhir diperlukan untuk periode custom.',
-          );
-        }
-        return { start: parseISO(startStr), end: endOfDay(parseISO(endStr)) };
-      default: // daily
-        return { start: startOfDay(now), end: endOfDay(now) };
-    }
-  }
-
-  private async getRevenueData(period: string, start: Date, end: Date) {
-    this.logger.log(
-      `Mengambil data pendapatan untuk grafik periode: ${period}`,
-    );
-
-    let query;
-    if (period === 'daily') {
-      query = this.prisma.$queryRaw<any[]>`
-        SELECT TO_CHAR(h.hour, 'FM00') || ':00' as period, COALESCE(SUM(o.total)::float, 0) as total
-        FROM generate_series(0, 23) h(hour)
-        LEFT JOIN "orders" o ON EXTRACT(HOUR FROM o."createdAt") = h.hour
-            AND o."createdAt" BETWEEN ${start} AND ${end}
-            AND o."paymentStatus" = ${PaymentStatus.PAID}::"PaymentStatus"
-        GROUP BY h.hour ORDER BY h.hour;`;
-    } else if (period === 'yearly') {
-      query = this.prisma.$queryRaw<any[]>`
-        SELECT TO_CHAR("createdAt", 'YYYY-MM') as period, COALESCE(SUM(total)::float, 0) as total
-        FROM "orders" WHERE "createdAt" BETWEEN ${start} AND ${end} AND "paymentStatus" = ${PaymentStatus.PAID}::"PaymentStatus"
-        GROUP BY period ORDER BY period;`;
-    } else {
-      // weekly, monthly, custom
-      query = this.prisma.$queryRaw<any[]>`
-        SELECT TO_CHAR("createdAt", 'YYYY-MM-DD') as period, COALESCE(SUM(total)::float, 0) as total
-        FROM "orders" WHERE "createdAt" BETWEEN ${start} AND ${end} AND "paymentStatus" = ${PaymentStatus.PAID}::"PaymentStatus"
-        GROUP BY period ORDER BY period;`;
-    }
-    return await query;
-  }
-
+  
   private async getOrderStats(start: Date, end: Date) {
-    this.logger.log(
-      `Mengambil statistik order dari ${start.toISOString()} hingga ${end.toISOString()}`,
-    );
+    this.logger.log(`Mengambil statistik order dari ${start.toISOString()} hingga ${end.toISOString()}`);
     const [processing, shipping, completed] = await Promise.all([
-      this.prisma.order.count({
-        where: {
-          createdAt: { gte: start, lte: end },
-          orderStatus: OrderStatus.PROCESSING,
-        },
-      }),
-      this.prisma.order.count({
-        where: {
-          createdAt: { gte: start, lte: end },
-          orderStatus: OrderStatus.SHIPPING,
-        },
-      }),
-      this.prisma.order.count({
-        where: {
-          createdAt: { gte: start, lte: end },
-          orderStatus: OrderStatus.COMPLETED,
-          paymentStatus: PaymentStatus.PAID,
-        },
-      }),
+      this.prisma.order.count({ where: { createdAt: { gte: start, lte: end }, orderStatus: OrderStatus.PROCESSING } }),
+      this.prisma.order.count({ where: { createdAt: { gte: start, lte: end }, orderStatus: OrderStatus.SHIPPING } }),
+      this.prisma.order.count({ where: { createdAt: { gte: start, lte: end }, orderStatus: OrderStatus.COMPLETED, paymentStatus: PaymentStatus.PAID } }),
     ]);
-    this.logger.log(
-      `Statistik order ditemukan: ${processing} diproses, ${shipping} dikirim, ${completed} selesai.`,
-    );
     return { processing, shipping, completed };
+  }
+
+  // ▼▼▼ FUNGSI BARU YANG FLEKSIBEL (MENGGANTIKAN getHourlyRevenue) ▼▼▼
+  private async getRevenueData(start: Date, end: Date, groupBy: GroupByUnit): Promise<RevenueDataPoint[]> {
+    this.logger.log(`Mengambil data pendapatan dari ${start.toISOString()} hingga ${end.toISOString()} dikelompokkan per-${groupBy}`);
+    
+    // Menggunakan DATE_TRUNC dari PostgreSQL untuk mengelompokkan waktu secara dinamis
+    const result = await this.prisma.$queryRaw<any[]>`
+      SELECT
+        DATE_TRUNC(${groupBy}, "createdAt") as period,
+        COALESCE(SUM(total)::float, 0) as total
+      FROM "orders"
+      WHERE "createdAt" >= ${start}
+        AND "createdAt" <= ${end}
+        AND "paymentStatus" = ${PaymentStatus.PAID}::"PaymentStatus"
+      GROUP BY period
+      ORDER BY period ASC;
+    `;
+    this.logger.log(`Data pendapatan berhasil diambil, ditemukan ${result.length} entri.`);
+    
+    // Format output agar konsisten dan mudah dibaca oleh frontend
+    return result.map(r => ({
+      period: this.formatPeriod(new Date(r.period), groupBy),
+      total: Number(r.total)
+    }));
+  }
+
+  // ▼▼▼ FUNGSI HELPER BARU (MENGGANTIKAN formatHourlyRevenue) ▼▼▼
+  private formatPeriod(date: Date, groupBy: GroupByUnit): string {
+    switch (groupBy) {
+      case 'hour':
+        return `${String(date.getUTCHours()).padStart(2, '0')}:00`;
+      case 'day':
+        // Format YYYY-MM-DD
+        return date.toISOString().split('T')[0];
+      case 'week':
+        // Format YYYY-MM-DD (tanggal pertama minggu itu)
+        return startOfWeek(date, { weekStartsOn: 1 }).toISOString().split('T')[0];
+      case 'month':
+        // Format YYYY-MM
+        return date.toISOString().slice(0, 7);
+      default:
+        return date.toISOString();
+    }
   }
 
   private async getBestProducts() {
@@ -156,28 +165,22 @@ export class DashboardService {
         },
       },
       orderBy: {
-        updatedAt: 'desc',
-      },
+        updatedAt: 'desc'
+      }
     });
     this.logger.log(`Ditemukan ${products.length} produk terlaris.`);
     return products;
   }
 
   async updateBestProducts(productIds: number[]) {
-    this.logger.log(
-      `Memulai proses update produk terlaris dengan ID: [${productIds.join(', ')}]`,
-    );
+    this.logger.log(`Memulai proses update produk terlaris dengan ID: [${productIds.join(', ')}]`);
     try {
       const result = await this.prisma.$transaction(async (tx) => {
-        this.logger.log('Menonaktifkan semua produk terlaris yang ada...');
         await tx.product.updateMany({
           data: { isBestProduct: false },
         });
 
         if (productIds && productIds.length > 0) {
-          this.logger.log(
-            `Mengaktifkan ${productIds.length} produk terlaris baru...`,
-          );
           await tx.product.updateMany({
             where: {
               id: { in: productIds },
